@@ -17,9 +17,29 @@ No local toolchain needed: pick your device in GitHub Actions, and the kernel is
 - [Supported devices](#supported-devices)
 - [Flashing](#flashing)
 - [Not implemented yet](#not-implemented-yet)
-- [Roadmap](ROADMAP.md)
+- [Repository layout](#repository-layout)
+- [Roadmap](docs/roadmap.md)
+- [Documentation](docs/README.md)
 - [Notes](#notes)
 - [Credits](#credits)
+
+---
+
+## Repository layout
+
+| Path | Purpose |
+|---|---|
+| `configs/` | One JSON build profile per device, under `a14/`, `a15/` and `a16/`. Validated against `configs/schema.json`. |
+| `manifests/` | Repo manifests pinning the OnePlus or AOSP kernel tree each profile builds from. |
+| `scripts/` | Config validation, patch dry-run, KMI check and build provenance. |
+| `.github/workflows/` | The build pipeline, the static gates, and the scheduled monitors. |
+| `.github/actions/` | Composite actions the build composes, plus the patches it applies. |
+| `docs/` | Compatibility notes, release history, and the roadmap. See [`docs/README.md`](docs/README.md). |
+
+Nothing generated belongs in source control. Build output, downloaded
+toolchains, kernel trees, zips and images are all produced by the workflow and
+are not committed. The same applies to device backups and any proprietary
+firmware payload.
 
 ---
 
@@ -38,7 +58,7 @@ No local toolchain needed: pick your device in GitHub Actions, and the kernel is
 
 A device config can override the root branch per device with a `ksu_hash` field. The default is `builtin` (SukiSU-Ultra 34680 with in-kernel SUSFS); `main`/`dev` do **not** work - susfs's KSU-side patch rejects on their tree, so they were tried and reverted.
 
-4. When the run finishes, grab the `{MODEL}_*.zip` from [Releases](https://github.com/Unnidentified/oplus-sukisu_kernel/releases) or the run's artifacts.
+4. When the run finishes, grab the `{MODEL}_*.zip` from [Releases](https://github.com/Unnidentified/oplus-sukisu_kernel/releases) or the run's artifacts. [`docs/changelog.md`](docs/changelog.md) records what each release changed.
 
 Zip names follow `{MODEL}_{KERNEL_FULL_VER}-SuSFS_{SUSVER}-r{REV}.zip` (LKM builds add `_LKM`), e.g. `OP15-COS17_android16-6.12.69-SuSFS_v2.3.0-r3.zip`.
 
@@ -141,7 +161,7 @@ The upstream set is larger. The rest is deliberately not applied:
 | `increase_ext4_default_commit_age` | 5s → 30s commit interval. More data at risk on an unclean shutdown |
 | `disable_cache_hot_buddy` | Turns off the EEVDF feature that keeps a task on its CPU. Costs cache locality |
 | `file_struct_8bytes_align` | Changes `struct file` alignment for no stated benefit |
-| `add_limitation_scaling_min_freq`, `re_write_…`, `use_unlikely_wrap_cpufreq` | A cpufreq sysfs feature, not an optimisation. The last depends on the first, so all three go together |
+| `add_limitation_scaling_min_freq`, `re_write_*`, `use_unlikely_wrap_cpufreq` | A cpufreq sysfs feature, not an optimisation. The last depends on the first, so all three go together |
 | `optimise_memcmp`, `int_sqrt` | Live, but replace already-optimised code in functions that are not hot |
 
 Adding a name to the allowlist means reviewing the patch first. The external repo is cloned from a moving branch, so the commit it resolved to is recorded as `features.patchset_commit` in `build-info.json`.
@@ -348,7 +368,7 @@ Things a current Android kernel normally has that this one does not. Listed so t
 
 Already on and easy to assume otherwise: `CONFIG_RANDOMIZE_KSTACK_OFFSET` defaults to `y` and both kernel trees select `HAVE_ARCH_RANDOMIZE_KSTACK_OFFSET`, so it is active without appearing in `gki_defconfig`.
 
-[`ROADMAP.md`](ROADMAP.md) carries the rest: what shipped, what was investigated and rejected with the reason, and what is blocked upstream.
+[`docs/roadmap.md`](docs/roadmap.md) carries the rest: what shipped, what was investigated and rejected with the reason, and what is blocked upstream.
 
 ---
 

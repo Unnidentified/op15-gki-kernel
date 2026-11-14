@@ -1,3 +1,0 @@
-• Root solution: SukiSU-Ultra (KernelSU-Next fork with SUSFS integrated) instead of KernelSU-Next.
-• Updated SUSFS to v2.3.0+ across all GKI versions (5.10 - 6.12).
-• Synced with upstream sakfi/OP_KSUN_FS: hybrid LKM mode, custom AnyKernel3.1 packaging, latest OSS kernel sources.

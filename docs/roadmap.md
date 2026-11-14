@@ -52,7 +52,7 @@ re-litigate without new evidence.
 | **`HZ_300`** | No upstream user; `HZ=250` is what GKI ships |
 | **`PREEMPT_DYNAMIC`** | Adds a static call on every preempt point for a runtime switch nothing flips |
 | **`SCHED_THERMAL_PRESSURE`** | Removed in 6.12 |
-| **`opt` patches outside the allowlist** | Each one is listed with its reason in the [README](README.md#optimisation-patches-opt). The short version: they either compile to nothing on arm64, hide real errors, or trade data safety for a number |
+| **`opt` patches outside the allowlist** | Each one is listed with its reason in the [README](../README.md#optimisation-patches-opt). The short version: they either compile to nothing on arm64, hide real errors, or trade data safety for a number |
 
 ---
 
