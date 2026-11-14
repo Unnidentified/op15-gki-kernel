@@ -1,68 +1,39 @@
-# Compatibility of OnePlus Kernels
-## 1. OnePlus Devices
+# Compatibility
 
-<table>
-  <tr>
-    <th> :warning: </th>
-    <th> All the Kernels are built on <a href="https://github.com/OnePlusOSS/">OnePlus Official Source</a> and are expected to work only on Stock roms!!!</th>
-  </tr>
-</table>
+## OnePlus devices
 
- - Currently All the kernels are built from Android 15 Manifest.
- - Do not use the zips after Major Android OTA (a15 -> a16) unless its verified in <a href="https://t.me/WildKernels">WildKernels</a> Telegram group or other sources like XDA.
+> [!WARNING]
+> Every kernel here is built from [OnePlus official sources](https://github.com/OnePlusOSS/)
+> and is expected to work only on stock ROMs.
 
-## 2. Non-OnePlus Devices
-### List of verified devices 
-<table>
-  <tr>
-    <th> :warning: </th>
-    <th> We expect all users who wants to test OnePlus Kernels on Non-OnePlus Phones to first disable dm-verity and verification using fastboot or other means.</th>
-  </tr>
-</table>
+- Profiles exist for OxygenOS 14, 15 and 16, covering kernel bases 5.10 through
+  6.12. The [README](../README.md#supported-devices) lists which devices each
+  release line covers.
+- Do not flash a zip across a major Android OTA (for example A15 to A16) unless
+  it has been confirmed working for that build. The KMI has to match.
 
- - If your device is not in list, please select the device which is most similar and matches the kernel version (androidXX-YY.ZZ.AAA). AAA must be atleast same or greater. XX-YY.ZZ must match exactly. More Information on this can be read @<a href="https://kernelsu.org/guide/installation.html#kmi">KernelSU.org</a>.
- - Thanks to our community users at <a href="https://t.me/WildKernelsTG">WildKernels</a> for helping us compile the list.
- - We request more users come forward help us keep the list updated. 
- - I'm sure more devices from other brands are also supported.
-<table>
-	<tr> 
-		<th align="center"> Device Name </th>
-		<th align="center"> Working Kernel Device Name </th>
-	    <th align="center"> Current Kernel Version </th>
-	</tr>
-	<tr> 
-		<td align="center"> Poco X7 Pro(used to work before)<br>Realme GT 7 Pro </td>
-		<td align="center"> OnePlus 13<br>OnePlus Ace 5 Pro </td>
-		<td align="center"> android15-6.6.89<br>android15-6.6.89 </td>
-	</tr>
-	<tr> 
-		<td align="center"> Realme GT Neo 5SE<br>Realme GT Neo 5 </td>
-		<td align="center"> OnePlus 10T<br>OnePlus 10 Pro<br>OnePlus Ace 2<br>OnePlus 11r (Partially) </td>
-		<td align="center"> android12-5.10.226<br>android12-5.10.226<br>android12-5.10.226<br>android12-5.10.209 </td>
-	</tr>
-	<tr> 
-		<td align="center"> Realme GT 5<br>Poco F6 Pro </td>
-		<td align="center"> OnePlus 11<br>OnePlus 11 </td>
-		<td align="center"> android13-5.15.167<br>android13-5.15.180 </td>
-	</tr>
-	<tr> 
-		<td align="center"> Realme GT Neo 6SE<br>Realme GT Neo 6T </td>
-		<td align="center"> OnePlus Nord 4 </td>
-		<td align="center"> android14-6.1.118 </td>
-	</tr>
-	<tr> 
-		<td align="center"> Realme GT 2 Pro </td>
-		<td align="center"> OnePlus 10 Pro </td>
-		<td align="center"> android12-5.10.226 </td>
-	</tr>
-	<tr> 
-		<td align="center"> Poco F8 Ultra </td>
-		<td align="center"> OnePlus 15 </td>
-		<td align="center"> android16-6.12.23 </td>
-	</tr>
-	<tr> 
-		<td align="center"> MI 12T Pro </td>
-		<td align="center"> OnePlus 10T</td>
-		<td align="center"> android12-5.10.226<br>android12-5.10.236</td>
-	</tr>
-</table>
+## Non-OnePlus devices
+
+> [!WARNING]
+> Disable dm-verity and verification with fastboot, or by other means, before
+> flashing a OnePlus kernel on a non-OnePlus device.
+
+- If your device is not listed below, pick the profile whose kernel version is
+  closest and matches the KMI exactly. The `androidXX-YY.ZZ` part must match;
+  the trailing `AAA` must be the same or higher. See the
+  [KernelSU KMI guide](https://kernelsu.org/guide/installation.html#kmi).
+- The list is community-maintained. Reports of devices that work, or that have
+  stopped working, are welcome.
+
+| Device | Working OnePlus kernel | Kernel version |
+| --- | --- | --- |
+| Poco X7 Pro (worked previously), Realme GT 7 Pro | OnePlus 13, OnePlus Ace 5 Pro | `android15-6.6.89` |
+| Realme GT Neo 5 SE, Realme GT Neo 5 | OnePlus 10T, OnePlus 10 Pro, OnePlus Ace 2, OnePlus 11R (partial) | `android12-5.10.226`, `android12-5.10.209` |
+| Realme GT 5, Poco F6 Pro | OnePlus 11 | `android13-5.15.167`, `android13-5.15.180` |
+| Realme GT Neo 6 SE, Realme GT Neo 6T | OnePlus Nord 4 | `android14-6.1.118` |
+| Realme GT 2 Pro | OnePlus 10 Pro | `android12-5.10.226` |
+| Poco F8 Ultra | OnePlus 15 | `android16-6.12.23` |
+| Xiaomi 12T Pro | OnePlus 10T | `android12-5.10.226`, `android12-5.10.236` |
+
+A device appearing here means someone reported it booting. It does not mean
+every subsystem was exercised. Treat it as a starting point, not a guarantee.
