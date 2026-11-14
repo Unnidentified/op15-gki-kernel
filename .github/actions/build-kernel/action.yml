@@ -1974,6 +1974,36 @@ runs:
         echo " Other patches applied"
         echo "::endgroup::"
 
+    - name: Apply 6.12 CVE backports
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "::group::Apply 6.12 CVE backports"
+        # Five fixes the reference tree carries on top of 6.12. Each one is a
+        # use-after-free or a race that a local attacker can reach, so they are
+        # applied unconditionally rather than behind a profile flag.
+        #
+        # The patches are written against 6.12.23 and 6.12.69, the two bases
+        # this repo builds for android16-6.12. The older KMIs need their own
+        # backports; writing these there would reject, so they are skipped.
+        if [ "${{ env.KERNEL_VER }}" != "6.12" ]; then
+          echo "   no CVE backports for ${{ env.KERNEL_VER }} (patches are 6.12 only)"
+          echo "::endgroup::"
+          exit 0
+        fi
+        cd "$COMMON_KERNEL_FOLDER"
+        for p in \
+          cve-2026-99103-workqueue-pending-pwq-6.12.patch \
+          cve-2026-99136-dm-crypt-crypt_dec_pending-6.12.patch \
+          cve-2026-99138-tcp-tcp_cc_info-uaf-6.12.patch \
+          cve-2026-99139-tcp-tcp_congestion-uaf-6.12.patch \
+          cve-2026-99167-net-sched-tcf-action-put-6.12.patch ; do
+          echo "   $p"
+          patch -p1 --forward < "${GITHUB_ACTION_PATH}/patches/$p"
+        done
+        echo "   5 CVE backports applied"
+        echo "::endgroup::"
+
     - name: Apply Optimisation Patches
       if: ${{ env.OP_OPT == 'true' }}
       shell: bash
