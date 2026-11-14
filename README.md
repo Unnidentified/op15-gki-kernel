@@ -61,6 +61,8 @@ The `-r{REV}` is the release revision. It is resolved once in `set-op-model`, be
 | Containers | **Droidspaces** | SYSVIPC support for portable Linux containers |
 | Misc | HMBIRD SCX, TMPFS xattr, Unicode bypass fix | Toggled per device in `configs/` |
 | Hardening | **LIST_HARDENED**, **RANDOM_KMALLOC_CACHES** | Baseline, on for every 6.6+ profile. See [Baseline hardening](#baseline-hardening) |
+| Security | **Five 6.12 CVE backports** | Applied to every 6.12 profile, no toggle. See [CVE backports](#cve-backports) |
+| Config | **EROFS zstd**, **pstore-blk**, **AES-NEON**, **hardlockup detector**, **Nintendo FF**, **power-efficient workqueues** | Parity with the reference tree. See [`docs/kernel-improvements.md`](docs/kernel-improvements.md) |
 | Debug | **KASAN off**, **KFENCE on** | `gki_defconfig` ships KASAN on; the build turns it off. See [KASAN](#kasan) |
 
 ---
@@ -161,6 +163,22 @@ Two more are deliberately **not** enabled:
 
 - **`CONFIG_INIT_ON_FREE_DEFAULT_ON`** zeroes every freed object. `INIT_ON_ALLOC_DEFAULT_ON` is already on and covers the main info-leak path; this doubles the zeroing for a smaller marginal gain.
 - **`CONFIG_ARM64_MTE`** needs hardware support and a userspace that tolerates tag checks. Enabling it blind crashes things.
+
+### CVE backports
+
+Five fixes are applied to every 6.12 profile, with no config flag. Each is a use-after-free or a race reachable by a local attacker, so there is no reason to build a kernel without them.
+
+| CVE | Area |
+|---|---|
+| CVE-2026-99103 | `workqueue`: unbound pool lifetime for pending pwqs |
+| CVE-2026-99136 | `dm-crypt`: race in `crypt_dec_pending` |
+| CVE-2026-99138 | `tcp`: use-after-free in `do_tcp_getsockopt(TCP_CC_INFO)` |
+| CVE-2026-99139 | `tcp`: use-after-free in `do_tcp_getsockopt(TCP_CONGESTION)` |
+| CVE-2026-99167 | `net/sched`: use-after-free in `__tcf_action_put()` |
+
+Four apply unmodified to both 6.12.23 and 6.12.69. The workqueue fix is written against 6.12.117, where the condition is the `is_percpu_pool()` helper; neither base has it, so the patch here keeps the equivalent `WQ_UNBOUND` test. The reordering, which is the fix, is identical.
+
+The patches are 6.12 only. The older KMIs need their own backports, and writing these there would reject. [`docs/kernel-improvements.md`](docs/kernel-improvements.md) records the full comparison against the reference tree, including what was deliberately not carried over.
 
 ### KASAN
 
