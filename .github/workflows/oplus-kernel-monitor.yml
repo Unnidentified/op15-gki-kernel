@@ -240,7 +240,7 @@ jobs:
                     [ "$STATUS" == "" ] && NEW_BRANCHES+="- $repo ($BRANCH_NAME)\n$DIFF_LOG" || UPDATED_BRANCHES+="- $repo ($BRANCH_NAME)\n$DIFF_LOG"
                   fi
                   
-                  echo " ↳ Branch: $BRANCH_NAME"
+                  echo "   Branch: $BRANCH_NAME"
                   
                 else
                   MAKEFILE_TEXT=$(echo "$row" | jq -r '.target.file.object.text // empty')
@@ -252,7 +252,7 @@ jobs:
                   fi
                   [ -z "$KERNEL" ] && KERNEL="N/A"
                 
-                  echo " ↳ Branch: $BRANCH_NAME ($KERNEL)"
+                  echo "   Branch: $BRANCH_NAME ($KERNEL)"
                   CURRENT_VAL="$SHA|$KERNEL"
                   if [ "$OLD_VAL" = "NONE" ]; then
                     STATUS=""
@@ -271,7 +271,7 @@ jobs:
                   } >> "$TARGET_BUF"
                   
                   if [ "$STATUS" != "" ]; then
-                    [ "$STATUS" == "" ] && NEW_BRANCHES+="- $repo ($BRANCH_NAME)\n" || UPDATED_BRANCHES+="- $repo ($BRANCH_NAME) → $KERNEL\n"
+                    [ "$STATUS" == "" ] && NEW_BRANCHES+="- $repo ($BRANCH_NAME)\n" || UPDATED_BRANCHES+="- $repo ($BRANCH_NAME) -> $KERNEL\n"
                   fi
                 fi
                 

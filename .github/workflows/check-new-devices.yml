@@ -218,7 +218,7 @@ jobs:
           | Upstream repo | \`$UPSTREAM\` |
           | Upstream reachable | $UPSTREAM_OK |
           | New devices found | ${COUNT:-0} |
-          | Issue opened | $([ "$NEW_FOUND" = "true" ] && [ "${{ inputs.dry_run }}" != "true" ] && echo " Yes" || echo "⏭ No") |
+          | Issue opened | $([ "$NEW_FOUND" = "true" ] && [ "${{ inputs.dry_run }}" != "true" ] && echo " Yes" || echo "No") |
           | Mode | $([ "${{ inputs.dry_run }}" = "true" ] && echo " Dry run" || echo " Live") |
 
           EOF

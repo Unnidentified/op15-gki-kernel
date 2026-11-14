@@ -1,5 +1,5 @@
 # ==========================================
-# 🎨 AnyKernel3 Custom Branding Template 🎨
+# AnyKernel3 Custom Branding Template
 # ==========================================
 
 # 1. ASCII Banner (Shown at the very top of the flashing process)
@@ -16,9 +16,9 @@ sleep 0.15
 sleep 0.8
 
 ui_print " "
-ui_print "| MODULE [SukiSU-Ultra] : : : : ACTIVE [✓]"
+ui_print "| MODULE [SukiSU-Ultra] : : : : ACTIVE [OK]"
 sleep 0.4
-ui_print "| MODULE [SUSFS] : : :  ACTIVE [✓]"
+ui_print "| MODULE [SUSFS] : : :  ACTIVE [OK]"
 sleep 0.5
 [ASCII_BANNER_END]
 
@@ -73,26 +73,26 @@ sleep 0.5
 ui_print "=> Applying Additional Patches"
 sleep 0.5
 ui_print " "
-ui_print "[✓] Completed"
+ui_print "[OK] Completed"
 sleep 0.8
 
 ui_print " "
-ui_print "[✓] SakFi Telegram Channel:"
+ui_print "[OK] SakFi Telegram Channel:"
 ui_print "    https://t.me/opksunfs"
 sleep 0.5
 
 ui_print " "
-ui_print "[✓] SakFi Telegram Group:"
+ui_print "[OK] SakFi Telegram Group:"
 ui_print "    https://t.me/opksunfsg"
 sleep 0.5
 
 ui_print " "
-ui_print "[✓] SakFi Telegram:"
+ui_print "[OK] SakFi Telegram:"
 ui_print "    https://t.me/SakFi"
 sleep 0.5
 
 ui_print " "
-ui_print "[✓] SakFi GitHub:"
+ui_print "[OK] SakFi GitHub:"
 ui_print "    https://github.com/sakfi"
 sleep 0.6
 

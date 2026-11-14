@@ -71,7 +71,7 @@ jobs:
         run: |
           CURRENT="${{ steps.fetch.outputs.current }}"
           LATEST="${{ steps.fetch.outputs.latest_tag }}"
-          TITLE=" SUSFS Update Available: $CURRENT → $LATEST"
+          TITLE=" SUSFS Update Available: $CURRENT -> $LATEST"
 
           BODY="### SUSFS Update Detected
 
@@ -126,7 +126,7 @@ jobs:
           EOF
 
           if [ "$UPDATE" = "true" ]; then
-            echo "> **Update available:** \`$CURRENT\` → \`$LATEST\`" >> "$GITHUB_STEP_SUMMARY"
+            echo "> **Update available:** \`$CURRENT\` -> \`$LATEST\`" >> "$GITHUB_STEP_SUMMARY"
           else
             echo "> **Up to date** - no action needed" >> "$GITHUB_STEP_SUMMARY"
           fi

@@ -68,12 +68,12 @@ if [ -d "$home/modules" ] && [ -f "$home/tools/ksud" ]; then
                 ui_print " - Flashing patched $target_part..."
                 dd if="$patched_file" of="$target_dev" 2>/dev/null
                 rm -f "$patched_file" target_image.img 2>/dev/null
-                ui_print "✅ KSUN LKM injected successfully into $target_part!"
+                ui_print " - KSUN LKM injected successfully into $target_part."
             else
-                ui_print "⚠️ Failed to patch ramdisk with ksud."
+                ui_print " ! Failed to patch ramdisk with ksud."
             fi
         else
-            ui_print "⚠️ Failed to dump $target_part image."
+            ui_print " ! Failed to dump $target_part image."
         fi
 
         if [ -f "$home/modules/susfs_guard_lkm.ko" ]; then
@@ -82,10 +82,10 @@ if [ -d "$home/modules" ] && [ -f "$home/tools/ksud" ]; then
             cp "$home/modules/susfs_guard_lkm.ko" /data/adb/modules/susfs_guard/ 2>/dev/null || true
             mkdir -p /tmp/modules 2>/dev/null || true
             cp "$home/modules/susfs_guard_lkm.ko" /tmp/modules/ 2>/dev/null || true
-            ui_print "✅ SUSFS Guard LKM staged!"
+            ui_print " - SUSFS Guard LKM staged."
         fi
     else
-        ui_print "⚠️ Target boot/init_boot partition could not be detected."
+        ui_print " ! Target boot/init_boot partition could not be detected."
     fi
 fi
 
@@ -96,6 +96,6 @@ ui_print "Telegram: https://t.me/SakFi"
 ui_print "GitHub:   https://github.com/sakfi/OP_KSUN_FS"
 ui_print "----------------------------------------------"
 ui_print " "
-ui_print "✅ Installation complete! Enjoy your kernel!"
+ui_print " - Installation complete."
 ui_print " "
 

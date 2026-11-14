@@ -155,10 +155,10 @@ The upstream set is larger. The rest is deliberately not applied:
 | Patch | Why not |
 |---|---|
 | `optimized_mem_operations` | Patches `lib/string.c` inside `#ifndef __HAVE_ARCH_MEMCPY/MEMSET/MEMMOVE`. arm64 defines all three and uses `arch/arm64/lib/*.S`, so it compiles to nothing here |
-| `silence_irq_cpu_logspam` | `pr_warn` → `pr_debug` on IRQ affinity failure. Hides a real error |
+| `silence_irq_cpu_logspam` | `pr_warn` to `pr_debug` on IRQ affinity failure. Hides a real error |
 | `silence_system_logspam` | Drops `devkmsg` writes whose text contains `healthd`/`logd`/`dashd`. Breaks logging |
 | `add_timeout_wakelocks_globally` | Turns indefinite wakelocks into 500 ms timeouts. Can cut short work that legitimately needs to stay awake |
-| `increase_ext4_default_commit_age` | 5s → 30s commit interval. More data at risk on an unclean shutdown |
+| `increase_ext4_default_commit_age` | 5s to 30s commit interval. More data at risk on an unclean shutdown |
 | `disable_cache_hot_buddy` | Turns off the EEVDF feature that keeps a task on its CPU. Costs cache locality |
 | `file_struct_8bytes_align` | Changes `struct file` alignment for no stated benefit |
 | `add_limitation_scaling_min_freq`, `re_write_*`, `use_unlikely_wrap_cpufreq` | A cpufreq sysfs feature, not an optimisation. The last depends on the first, so all three go together |
