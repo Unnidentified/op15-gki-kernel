@@ -2674,6 +2674,23 @@ runs:
           patch -p1 < "$KERNEL_PATCHES_FOLDER/common/vendor_modules/0001-Support-conditional-vendor-modules-blacklisting-6.1-and-above.patch"
         fi
         
+    - name: Fix libbpf const qualifiers
+      shell: bash
+      run: |
+        # clang 20 flags the vendored libbpf under tools/lib/bpf when strstr()
+        # and strchr() are handed a const char *. resolve_btfids builds that
+        # copy with -Werror, so the build stops before any kernel code is
+        # compiled. Neither variable is written through, so const char * is the
+        # fix upstream libbpf carries. Guarded, because the tree is pinned per
+        # profile and a newer base may already carry it.
+        PATCH_FILE="${GITHUB_ACTION_PATH}/patches/libbpf-const-qualifiers-6.12.patch"
+        if patch -p1 --dry-run --forward -d "$COMMON_KERNEL_FOLDER" < "$PATCH_FILE" >/dev/null 2>&1; then
+          patch -p1 --forward -d "$COMMON_KERNEL_FOLDER" < "$PATCH_FILE"
+          echo "Applied libbpf const-qualifier fix"
+        else
+          echo "Skipped libbpf const-qualifier fix (already applied or not applicable)"
+        fi
+
     - name: Build Kernel
       id: build_kernel_step
       shell: bash
