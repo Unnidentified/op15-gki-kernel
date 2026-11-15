@@ -175,6 +175,52 @@ jobs:
       - name: python syntax
         run: python3 -m py_compile scripts/*.py
 
+      - name: composite action expression budget
+        run: |
+          # A run block containing an expression is compiled as a single
+          # expression, and GitHub rejects anything over 21,000 characters with
+          # "The template is not valid ... Exceeded max expression length
+          # 21000". That failure happens before the step runs, so it looks like
+          # a build failure with no useful log. Check it here instead.
+          python3 - <<'PY'
+          import pathlib, sys
+
+          LIMIT = 21000
+          OPEN = '$' + '{{'
+          failed = False
+
+          for path in sorted(pathlib.Path('.github/actions').rglob('action.yml')):
+              lines = path.read_text(encoding='utf-8').splitlines()
+              for i, line in enumerate(lines):
+                  if line.strip() not in ('run: |', 'run: >'):
+                      continue
+                  indent = len(line) - len(line.lstrip())
+                  end = i + 1
+                  while end < len(lines):
+                      nxt = lines[end]
+                      if nxt.strip() and (len(nxt) - len(nxt.lstrip())) <= indent:
+                          break
+                      end += 1
+                  raw = lines[i + 1:end]
+                  if not any(OPEN in x for x in raw):
+                      continue
+                  content_indent = min(
+                      (len(x) - len(x.lstrip())) for x in raw if x.strip()
+                  )
+                  body = '\n'.join(
+                      x[content_indent:] if x.strip() else '' for x in raw
+                  )
+                  if len(body) > LIMIT:
+                      print(
+                          f'{path}:{i + 1}: run block is {len(body)} chars, '
+                          f'over the {LIMIT} expression limit. Move part of it '
+                          f'into a script.'
+                      )
+                      failed = True
+
+          sys.exit(1 if failed else 0)
+          PY
+
       - name: build-info smoke test
         run: |
           # The writer derives the kernel source commit from the manifest, which
