@@ -100,11 +100,18 @@ PY
 
 while read -r url; do
   [ -n "$url" ] || continue
-  code=$(curl -sSL -o /dev/null -w '%{http_code}' --max-time 30 "$url" 2>/dev/null || echo 000)
+  # HEAD, not GET. The archive is a few hundred MB, so a GET hits --max-time,
+  # and curl then prints the 200 it already received while exiting non-zero.
+  # That made every pin look broken.
+  code=$(curl -sSL -o /dev/null -w '%{http_code}' --max-time 30 --head "$url" 2>/dev/null)
+  rc=$?
+  [ "$rc" -eq 0 ] || code=000
   if [ "$code" != "200" ]; then
     # One retry: a transient 5xx should not fail the gate.
     sleep 2
-    code=$(curl -sSL -o /dev/null -w '%{http_code}' --max-time 30 "$url" 2>/dev/null || echo 000)
+    code=$(curl -sSL -o /dev/null -w '%{http_code}' --max-time 30 --head "$url" 2>/dev/null)
+    rc=$?
+    [ "$rc" -eq 0 ] || code=000
   fi
   [ "$code" = "200" ] || fail "pinned revision does not resolve (HTTP $code): $url"
   log "pinned revision ok: $(basename "$(dirname "$(dirname "$url")")") @ $(basename "$url" .tar.gz)"
