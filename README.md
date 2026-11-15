@@ -248,6 +248,16 @@ There are two, and the choice is about which OS you are on, not about features.
 
 If you are on OxygenOS 16 with a `6.12.23-android16-5` kernel, `OP15` is your profile.
 
+In the **Build Kernel** workflow, `op_model` picks one or the other:
+
+| `op_model` | Builds |
+|---|---|
+| `OP15` | `OP15` only |
+| `OP15-COS17-OH` | `OP15-COS17` only |
+| `OP15-COS17` | `OP15-COS17` only (same as above) |
+
+`OP15` and `OP15-COS17` are two devices on two kernel bases, not a family, so `OP15` matches exactly and does not pull in the ColorOS 17 profile. Every other selector keeps the family behaviour, where `OP11` also builds `OP11-5.15.149` and `OP11-5.15.167`.
+
 ### Known-unbuildable profiles
 
 72 of 159 profiles cannot be built today. The cause is the same for all of them: the `susfs4ksu` branch for that KMI has been rebased onto a newer kernel, so its `50_add_susfs` patch no longer matches the OnePlus tree the profile pins. The build aborts on the leftover `.rej` rather than shipping a kernel with SUSFS hooks missing.

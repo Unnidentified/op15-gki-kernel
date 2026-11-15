@@ -71,6 +71,7 @@ on:
           - OP13r
           - OP15
           - OP15-COS17
+          - OP15-COS17-OH
           - OP15r
           - OP15T
           - OP-TURBO-6
@@ -258,6 +259,18 @@ jobs:
           
           case "$input" in
             All)
+              ;;
+            # OP15 and OP15-COS17 are two different devices on two different
+            # kernel bases, not a family. The generic prefix match below would
+            # make OP15 build both, so OP15 is exact and the ColorOS 17 profile
+            # gets its own selector.
+            OP15)
+              echo " Device-specific filter applied: $input (exact)"
+              jq_filter="map(select(.model == \"OP15\"))"
+              ;;
+            OP15-COS17-OH)
+              echo " Device-specific filter applied: $input -> OP15-COS17"
+              jq_filter="map(select(.model == \"OP15-COS17\"))"
               ;;
             *)
               echo " Device-specific filter applied: $input"
