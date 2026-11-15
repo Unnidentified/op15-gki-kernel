@@ -344,7 +344,7 @@ jobs:
           
           echo "$filtered" | jq '.' > matrix.json
           
-          # For each device + each ksu option → one combined entry
+          # For each device + each ksu option -> one combined entry
           merged_matrix=$(jq -n --slurpfile devices matrix.json --argjson ksu_list "$ksu_options_normalized" \
             '[ $devices[0][] as $dev | $ksu_list[] as $ksu | ($dev + {ksu_type: $ksu.type, ksu_hash: (if ($dev.ksu_hash? // null) != null then $dev.ksu_hash else $ksu.hash end)}) ]')
           
@@ -414,7 +414,7 @@ jobs:
             exit 1
           fi
           
-          echo " Resolved: $ksu_type/$ksu_ref → $resolved_sha"
+          echo " Resolved: $ksu_type/$ksu_ref -> $resolved_sha"
           echo "ksu_resolved_hash=$resolved_sha" >> "$GITHUB_OUTPUT"
           
           # Per-config ksu_hash overrides are resolved here too, so a bad ref
@@ -446,7 +446,7 @@ jobs:
               exit 1
             fi
             ksu_extra_hashes["$extra"]="$extra_sha"
-            echo " Resolved: ksu_hash/$extra → $extra_sha"
+            echo " Resolved: ksu_hash/$extra -> $extra_sha"
           done
 
           ksu_extra_json=$(for k in "${!ksu_extra_hashes[@]}"; do
@@ -518,7 +518,7 @@ jobs:
                     | jq -r '.data.project.repository.blobs.nodes[0].rawBlob // empty' \
                     | grep '#define SUSFS_VERSION' | awk -F'"' '{print $2}')
                   RESOLVED_VERSION="${ver:-unknown}"
-                  echo " $label ($ref) → SUSFS_VERSION = $RESOLVED_VERSION"
+                  echo " $label ($ref) -> SUSFS_VERSION = $RESOLVED_VERSION"
                   return 0
                 fi
               fi
@@ -552,7 +552,7 @@ jobs:
               if resolve_susfs_ref "$user_val" "$key default"; then
                 susfs_hashes["$key"]="$RESOLVED_SHA"
                 [ -n "$RESOLVED_VERSION" ] && susfs_versions_per_ref["$user_val"]="$RESOLVED_VERSION"
-                echo " Resolved: $key default ($user_val) → $RESOLVED_SHA"
+                echo " Resolved: $key default ($user_val) -> $RESOLVED_SHA"
               else
                 echo "::error::Could not resolve SUSFS ref '$user_val' for $key on GitLab."
                 exit 1
@@ -563,7 +563,7 @@ jobs:
               if resolve_susfs_ref "$pin" "$key pin"; then
                 susfs_pin_hashes["$key|$pin"]="$RESOLVED_SHA"
                 [ -n "$RESOLVED_VERSION" ] && susfs_versions_per_ref["$pin"]="$RESOLVED_VERSION"
-                echo " Resolved: $key pin ($pin) → $RESOLVED_SHA"
+                echo " Resolved: $key pin ($pin) -> $RESOLVED_SHA"
                 # Keep the per-key output meaningful when nothing uses the default.
                 [ "$unpinned" -eq 0 ] && susfs_hashes["$key"]="$RESOLVED_SHA"
               else
@@ -705,7 +705,7 @@ jobs:
           
           build_ts_input="${{ inputs.build_timestamp }}"
           if [ -z "$build_ts_input" ]; then
-            build_ts_display="⏱ auto (current build time)"
+            build_ts_display="auto (current build time)"
           else
             build_ts_display=" \`$build_ts_input\`"
           fi
@@ -1263,12 +1263,7 @@ jobs:
 
           EOF
 
-          if [ -f "changelog.txt" ] && [ -s "changelog.txt" ]; then
-            echo '```text' >> release_notes.md
-            cat changelog.txt >> release_notes.md
-            echo "" >> release_notes.md
-            echo '```' >> release_notes.md
-          elif [ -n "${{ inputs.custom_changelog }}" ]; then
+          if [ -n "${{ inputs.custom_changelog }}" ]; then
             echo '```text' >> release_notes.md
             echo "${{ inputs.custom_changelog }}" >> release_notes.md
             echo '```' >> release_notes.md

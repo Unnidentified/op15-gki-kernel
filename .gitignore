@@ -1,9 +1,25 @@
+# Local editor and tooling state
 .actrc
 .env
 .input
 .vscode
-*.Identifier
+
+# Patch application leftovers. The build applies patches with -F0 and aborts on
+# a reject, so these only appear when a patch is being debugged by hand.
 *.orig
 *.rej
+
+# Python bytecode from scripts/
 __pycache__/
 *.pyc
+
+# Output from scripts/build-info.py and the build action. Provenance records
+# and zips are published as release assets, never committed.
+build-info.json
+artifacts/
+*.log
+
+# macOS metadata
+.DS_Store
+._*
+*.Identifier

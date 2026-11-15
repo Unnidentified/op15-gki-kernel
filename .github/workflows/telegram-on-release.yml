@@ -56,11 +56,11 @@ jobs:
             STATUS="Manual Notification"
           fi
 
-          # ── Extract SUSFS version from release tag (e.g. v2.2.0-r1 → v2.2.0) ──
+          # Extract SUSFS version from release tag (e.g. v2.2.0-r1 -> v2.2.0)
           SUSFS_VER=$(echo "$REL_TAG" | sed 's/-r[0-9]*$//')
           if [ -z "$SUSFS_VER" ]; then SUSFS_VER="latest"; fi
 
-          # ── Extract Features from the release body ──
+          # Extract Features from the release body
           # The release body has a " Features & Capabilities" table with rows like:
           # | **SukiSU-Ultra** | Kernel-level root solution (KernelSU-Next fork) |
           FEATURES_RAW=$(echo "$REL_BODY" | awk '
@@ -134,13 +134,8 @@ jobs:
           - Enhanced security (BBG)"
           fi
 
-          # ── Changelog: read from changelog.txt (committed in repo) ──
-          if [ -f "changelog.txt" ] && [ -s "changelog.txt" ]; then
-            CLEAN_CHANGELOG=$(cat changelog.txt)
-          else
-            # Fallback: extract from release body under 'This Release'
-            CLEAN_CHANGELOG=$(echo "$REL_BODY" | awk '/^### This Release/ {flag=1; next} /^### Previous Releases/ || /^---/ || /^## / {flag=0} flag && /^- /')
-          fi
+          # Extract the changelog from the release body under 'This Release'
+          CLEAN_CHANGELOG=$(echo "$REL_BODY" | awk '/^### This Release/ {flag=1; next} /^### Previous Releases/ || /^---/ || /^## / {flag=0} flag && /^- /')
           if [ -z "$CLEAN_CHANGELOG" ]; then CLEAN_CHANGELOG="- Minor updates and under the hood improvements"; fi
           if [[ ${#CLEAN_CHANGELOG} -gt 3500 ]]; then CLEAN_CHANGELOG="${CLEAN_CHANGELOG:0:3500}..."; fi
 
