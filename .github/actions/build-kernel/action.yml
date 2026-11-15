@@ -1974,6 +1974,36 @@ runs:
         echo " Other patches applied"
         echo "::endgroup::"
 
+    - name: Apply 6.12 CVE backports
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "::group::Apply 6.12 CVE backports"
+        # Five fixes the reference tree carries on top of 6.12. Each one is a
+        # use-after-free or a race that a local attacker can reach, so they are
+        # applied unconditionally rather than behind a profile flag.
+        #
+        # The patches are written against 6.12.23 and 6.12.69, the two bases
+        # this repo builds for android16-6.12. The older KMIs need their own
+        # backports; writing these there would reject, so they are skipped.
+        if [ "${{ env.KERNEL_VER }}" != "6.12" ]; then
+          echo "   no CVE backports for ${{ env.KERNEL_VER }} (patches are 6.12 only)"
+          echo "::endgroup::"
+          exit 0
+        fi
+        cd "$COMMON_KERNEL_FOLDER"
+        for p in \
+          cve-2026-99103-workqueue-pending-pwq-6.12.patch \
+          cve-2026-99136-dm-crypt-crypt_dec_pending-6.12.patch \
+          cve-2026-99138-tcp-tcp_cc_info-uaf-6.12.patch \
+          cve-2026-99139-tcp-tcp_congestion-uaf-6.12.patch \
+          cve-2026-99167-net-sched-tcf-action-put-6.12.patch ; do
+          echo "   $p"
+          patch -p1 --forward < "${GITHUB_ACTION_PATH}/patches/$p"
+        done
+        echo "   5 CVE backports applied"
+        echo "::endgroup::"
+
     - name: Apply Optimisation Patches
       if: ${{ env.OP_OPT == 'true' }}
       shell: bash
@@ -2316,6 +2346,58 @@ runs:
         CONFIG_RANDOM_KMALLOC_CACHES=y
         EOF
         echo "   LIST_HARDENED + RANDOM_KMALLOC_CACHES enabled"
+        echo "::endgroup::"
+
+    - name: Add config parity with the reference tree
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "::group::Add config parity with the reference tree"
+        # Symbols the reference tree enables that stock gki_defconfig leaves at
+        # their Kconfig default. Each is a capability the kernel gains with no
+        # per-device toggle, so they go on every profile.
+        #
+        #   PSTORE_BLK          panic and oops records to a block device, so a
+        #                       crash survives the reboot that follows it.
+        #   CRYPTO_AES_ARM64_NEON_BLK  AES through NEON for the block modes
+        #                       dm-crypt and fscrypt actually use.
+        #   HARDLOCKUP_DETECTOR catches a CPU that stops taking interrupts,
+        #                       which the softlockup detector cannot see. The
+        #                       reference swaps SOFTLOCKUP_DETECTOR out for
+        #                       this; both are independent bools that select
+        #                       LOCKUP_DETECTOR, so this keeps both.
+        #   WQ_POWER_EFFICIENT_DEFAULT  what OnePlus ships on its own trees.
+        #                       Replicated so the AOSP-based profiles match.
+        defconfig="$COMMON_KERNEL_FOLDER/arch/arm64/configs/gki_defconfig"
+
+        # Present since 3.x, so every KMI this repo builds can take them.
+        cat >> "$defconfig" <<EOF
+        CONFIG_PSTORE_BLK=m
+        CONFIG_CRYPTO_AES_ARM64_NEON_BLK=m
+        CONFIG_HARDLOCKUP_DETECTOR=y
+        CONFIG_WQ_POWER_EFFICIENT_DEFAULT=y
+        EOF
+
+        # These landed in 5.16. Writing them on 5.10 or 5.15 would be a no-op
+        # that olddefconfig silently drops, so skip those instead.
+        #
+        #   EROFS_FS_ZIP_ZSTD   read zstd-compressed EROFS images. Android 16
+        #                       system partitions use zstd; without this the
+        #                       kernel only mounts lz4-compressed ones.
+        #   HARDLOCKUP_DETECTOR_PREFER_BUDDY  use the buddy detector, which
+        #                       needs no PMU counter.
+        #   NINTENDO_FF         rumble for Switch controllers, alongside the
+        #                       NTSync support this kernel already ships.
+        if [ "$(printf '%s\n' "$KERNEL_VER" "5.16" | sort -V | head -n1)" = "5.16" ]; then
+          cat >> "$defconfig" <<EOF
+        CONFIG_EROFS_FS_ZIP_ZSTD=y
+        CONFIG_HARDLOCKUP_DETECTOR_PREFER_BUDDY=y
+        CONFIG_NINTENDO_FF=y
+        EOF
+          echo "   full set applied ($KERNEL_VER)"
+        else
+          echo "   5.16+ symbols skipped on $KERNEL_VER"
+        fi
         echo "::endgroup::"
 
     - name: Disable KASAN

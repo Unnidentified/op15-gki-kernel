@@ -146,6 +146,14 @@ fi
 [ "$adios" = "true" ] && add_patch_paths "$patches_dir/adios_ioscheduler_6.12.patch"
 add_patch_paths "$patches_dir/susfs-fix-task_mmu-sus-map-gki-6.12.patch"
 
+# The CVE backports are applied on every 6.12 profile, so their paths are
+# always needed when the base is 6.12.
+if [ "$kernel" = "6.12" ]; then
+  for p in "$patches_dir"/cve-*-6.12.patch; do
+    add_patch_paths "$p"
+  done
+fi
+
 sort -u "$paths_file" -o "$paths_file"
 
 # Sparse clone of the pinned base. blob:none keeps it to a few MB.
@@ -338,6 +346,16 @@ if [ "$adios" = "true" ]; then
     6.12) apply "ADIOS" "$patches_dir/adios_ioscheduler_6.12.patch" --ignore-whitespace -F3 ;;
     *) log "ADIOS: no patch for $kernel, skipped" ;;
   esac
+fi
+
+# Applied unconditionally on 6.12, matching the build. These are security
+# fixes, not profile features, so there is no flag to turn them off.
+if [ "$kernel" = "6.12" ]; then
+  for p in "$patches_dir"/cve-*-6.12.patch; do
+    apply "CVE backport $(basename "$p" .patch)" "$p"
+  done
+else
+  log "CVE backports: no patch for $kernel, skipped"
 fi
 
 # A blocked profile that now applies cleanly means the blocker is gone and the
