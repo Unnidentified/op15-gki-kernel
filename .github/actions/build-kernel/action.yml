@@ -1413,7 +1413,7 @@ runs:
               patch -p1 --forward < "$SUSFS_FOLDER/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch" || true
             fi
             ;;
-          "v2.2.0"|"v2.3.0")
+          "v2.2.0"|"v2.3.0"|"v2.4.0")
             if [ "${{ inputs.ksu_type }}" = "KSUN" ]; then
               cd "$KSUN_FOLDER"
               # SukiSU-Ultra 'builtin' already carries the full in-kernel SUSFS
@@ -1452,6 +1452,8 @@ runs:
             ;;
           *)
             echo "::error::Unsupported SUSFS version: $susfs_version"
+            echo "::error::Add it to the case above. The fix patches it needs live in"
+            echo "::error::WildKernels/kernel_patches under next/susfs_fix_patches/$susfs_version."
             exit 1
             ;;
         esac
