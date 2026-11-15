@@ -100,11 +100,18 @@ PY
 
 while read -r url; do
   [ -n "$url" ] || continue
-  code=$(curl -sSL -o /dev/null -w '%{http_code}' --max-time 30 "$url" 2>/dev/null || echo 000)
+  # HEAD, not GET. The archive is a few hundred MB, so a GET hits --max-time,
+  # and curl then prints the 200 it already received while exiting non-zero.
+  # That made every pin look broken.
+  code=$(curl -sSL -o /dev/null -w '%{http_code}' --max-time 30 --head "$url" 2>/dev/null)
+  rc=$?
+  [ "$rc" -eq 0 ] || code=000
   if [ "$code" != "200" ]; then
     # One retry: a transient 5xx should not fail the gate.
     sleep 2
-    code=$(curl -sSL -o /dev/null -w '%{http_code}' --max-time 30 "$url" 2>/dev/null || echo 000)
+    code=$(curl -sSL -o /dev/null -w '%{http_code}' --max-time 30 --head "$url" 2>/dev/null)
+    rc=$?
+    [ "$rc" -eq 0 ] || code=000
   fi
   [ "$code" = "200" ] || fail "pinned revision does not resolve (HTTP $code): $url"
   log "pinned revision ok: $(basename "$(dirname "$(dirname "$url")")") @ $(basename "$url" .tar.gz)"
@@ -145,6 +152,8 @@ fi
 [ "$bore" = "true" ] && add_patch_paths "$patches_dir/bore-fix-6.12.23.patch"
 [ "$adios" = "true" ] && add_patch_paths "$patches_dir/adios_ioscheduler_6.12.patch"
 add_patch_paths "$patches_dir/susfs-fix-task_mmu-sus-map-gki-6.12.patch"
+add_patch_paths "$patches_dir/susfs-fix-namespace-headers-gki-6.1.patch"
+add_patch_paths "$patches_dir/susfs-fix-namespace-headers-gki-5.15.patch"
 
 # The CVE backports are applied on every 6.12 profile, so their paths are
 # always needed when the base is 6.12.
@@ -274,11 +283,48 @@ if [ "$susfs" = "true" ]; then
   [ "$rc" -le 1 ] || fail "susfs: patch failed seriously (rc=$rc)"
 
   if find "$kernel_dir" -name 'task_mmu.c.rej' | grep -q .; then
-    log "susfs: task_mmu rejected, applying adapted fix"
-    rm -f "$kernel_dir/fs/proc/task_mmu.c.rej"
-    apply "susfs task_mmu fix" "$patches_dir/susfs-fix-task_mmu-sus-map-gki-6.12.patch"
+    case "$kernel" in
+      5.15)
+        # The OnePlus 5.15 trees already carry both SUS_MAP checks in
+        # show_smaps_rollup, so the hunks reject as already applied. Confirm
+        # that before dropping the reject.
+        if grep -qF 'SUSFS_IS_INODE_SUS_MAP' "$kernel_dir/fs/proc/task_mmu.c"; then
+          log "susfs: task_mmu already carries the SUS_MAP checks, dropping reject"
+          rm -f "$kernel_dir/fs/proc/task_mmu.c.rej"
+        else
+          fail "susfs: task_mmu rejected and the SUS_MAP checks are absent"
+        fi
+        ;;
+      *)
+        log "susfs: task_mmu rejected, applying adapted fix"
+        rm -f "$kernel_dir/fs/proc/task_mmu.c.rej"
+        apply "susfs task_mmu fix" "$patches_dir/susfs-fix-task_mmu-sus-map-gki-6.12.patch"
+        ;;
+    esac
   else
     log "susfs: task_mmu applied from the main patch, fix not needed"
+  fi
+
+  # The fs/namespace.c hunk uses #include <trace/hooks/blk.h> as context. The
+  # OnePlus 6.1 trees ship include/trace/hooks/fs.h instead and the 5.15 trees
+  # have no include/trace/hooks/ at all, so the hunk rejects on both. Re-apply
+  # it against the vendor context; only when the original hunk actually
+  # rejected.
+  if find "$kernel_dir" -name 'namespace.c.rej' | grep -q .; then
+    case "$kernel" in
+      5.15) ns_fix="$patches_dir/susfs-fix-namespace-headers-gki-5.15.patch" ;;
+      6.1)  ns_fix="$patches_dir/susfs-fix-namespace-headers-gki-6.1.patch" ;;
+      *)    ns_fix="" ;;
+    esac
+    if [ -n "$ns_fix" ] && [ -f "$ns_fix" ]; then
+      log "susfs: namespace rejected, applying adapted fix"
+      rm -f "$kernel_dir/fs/namespace.c.rej"
+      apply "susfs namespace fix" "$ns_fix"
+    else
+      fail "susfs: namespace rejected and no adapted fix for $kernel"
+    fi
+  else
+    log "susfs: namespace applied from the main patch, fix not needed"
   fi
 
   rejects=$(find "$kernel_dir" -name '*.rej' | sort)

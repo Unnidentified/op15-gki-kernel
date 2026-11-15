@@ -60,26 +60,28 @@ re-litigate without new evidence.
 
 ### SUSFS patch drift on android14-6.1 and android13-5.15
 
-72 of 159 profiles cannot build. Every one of them fails for the same reason:
-the `susfs4ksu` branch for that KMI has been rebased onto a newer kernel, so its
-`50_add_susfs` patch no longer matches the OnePlus tree the profile pins.
+Resolved. All 159 profiles apply their patch sequence cleanly.
 
-| KMI | Blocked | Failing files | Branch rebased onto |
+The `susfs4ksu` branches for both KMIs were rebased onto newer kernels, so their
+`50_add_susfs` patches stopped matching the OnePlus trees the profiles pin. The
+mismatch was context, not functionality:
+
+| KMI | File | Why it rejected | Fix |
 |---|---|---|---|
-| `android14-6.1` | 51 | `fs/namespace.c` | 6.1.176 |
-| `android13-5.15` | 21 | `fs/namespace.c`, `fs/proc/task_mmu.c` | 5.15.180 |
+| `android14-6.1` | `fs/namespace.c` | the hunk expects `#include <trace/hooks/blk.h>`; the tree ships `include/trace/hooks/fs.h` | `susfs-fix-namespace-headers-gki-6.1.patch` |
+| `android13-5.15` | `fs/namespace.c` | the hunk expects `#include <trace/hooks/blk.h>`; the tree has no `include/trace/hooks/` | `susfs-fix-namespace-headers-gki-5.15.patch` |
+| `android13-5.15` | `fs/proc/task_mmu.c` | both `SUS_MAP` checks are already in the vendor tree | reject dropped after asserting the checks are present |
 
-The `android14-6.1` failure is a context line: the patch expects
-`#include <trace/hooks/blk.h>` in `fs/namespace.c`, which the OnePlus 6.1 trees
-do not have. Adding it is not enough, because `fs/proc_namespace.c` fails
-outright as well. Walking the branch back 25 commits does not find a version
-that applies either, so there is no pin to fall back on the way `OP11` pins
-`8c4fa71`.
+The two adapted patches add exactly what the upstream hunk adds, against the
+context the vendor tree actually has, and are applied only when the original
+hunk rejected. The earlier note here claimed `fs/proc_namespace.c` failed
+outright as well; it does not, and has not since the pre-patches were ported
+into `check-patches.sh`.
 
-**Revisit when** a `susfs4ksu` commit lands whose patch applies to these bases,
-or when the profiles move to a newer OnePlus tree. `scripts/sweep-patches.sh`
-re-derives the list, and the weekly `Patch Sweep` workflow reports when it
-changes.
+**Revisit when** a `susfs4ksu` commit lands whose patch applies to these bases
+without adaptation, at which point the two fixups become dead code and should
+be deleted. `scripts/sweep-patches.sh` re-derives the list, and the weekly
+`Patch Sweep` workflow reports when it changes.
 
 ### `CONFIG_SCHED_CLUSTER`
 

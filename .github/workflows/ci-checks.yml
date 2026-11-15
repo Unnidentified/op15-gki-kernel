@@ -55,13 +55,54 @@ jobs:
           fi
 
           # Every model must survive the device filter the workflow applies.
+          # OP15 is exact-only there, so it is exact-only here too; everything
+          # else keeps the family prefix match.
           while read -r model; do
-            n=$(jq --arg m "$model" 'map(select(.model == $m or (.model | startswith($m + "-")))) | length' /tmp/matrix.json)
+            case "$model" in
+              OP15) n=$(jq '[.[] | select(.model == "OP15")] | length' /tmp/matrix.json) ;;
+              *)    n=$(jq --arg m "$model" 'map(select(.model == $m or (.model | startswith($m + "-")))) | length' /tmp/matrix.json) ;;
+            esac
             if [ "$n" -eq 0 ]; then
               echo "::error::device filter for '$model' matches nothing"
               exit 1
             fi
           done < <(jq -r '.[].model' /tmp/matrix.json | sort -u)
+
+          # Every op_model choice must resolve to at least one profile. A
+          # selector that matches nothing produces an empty matrix, and the
+          # dispatch fails only after the user has picked it.
+          python3 - <<'PY'
+          import json, sys, yaml
+
+          wf = yaml.safe_load(open(".github/workflows/build-kernel-release.yml"))
+          # PyYAML reads the bare `on:` key as boolean True.
+          root = wf.get("on") or wf.get(True) or {}
+          options = (
+              root.get("workflow_dispatch", {})
+                  .get("inputs", {})
+                  .get("op_model", {})
+                  .get("options", [])
+          )
+          profiles = json.load(open("/tmp/matrix.json"))
+
+          def matches(sel):
+              if sel == "All":
+                  return len(profiles)
+              if sel == "OP15":
+                  return sum(1 for p in profiles if p.get("model") == "OP15")
+              if sel == "OP15-COS17-OH":
+                  return sum(1 for p in profiles if p.get("model") == "OP15-COS17")
+              return sum(
+                  1 for p in profiles
+                  if p.get("model") == sel or str(p.get("model", "")).startswith(sel + "-")
+              )
+
+          bad = [s for s in options if matches(s) == 0]
+          for s in bad:
+              print(f"::error::op_model choice '{s}' matches no profile")
+          print(f"op_model choices: {len(options)}, all resolve" if not bad else "")
+          sys.exit(1 if bad else 0)
+          PY
 
           # Blocked profiles are dropped from the build matrix. Dropping them
           # must leave something to build: a matrix where every profile is

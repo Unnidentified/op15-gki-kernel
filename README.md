@@ -248,101 +248,31 @@ There are two, and the choice is about which OS you are on, not about features.
 
 If you are on OxygenOS 16 with a `6.12.23-android16-5` kernel, `OP15` is your profile.
 
+In the **Build Kernel** workflow, `op_model` picks one or the other:
+
+| `op_model` | Builds |
+|---|---|
+| `OP15` | `OP15` only |
+| `OP15-COS17-OH` | `OP15-COS17` only |
+| `OP15-COS17` | `OP15-COS17` only (same as above) |
+
+`OP15` and `OP15-COS17` are two devices on two kernel bases, not a family, so `OP15` matches exactly and does not pull in the ColorOS 17 profile. Every other selector keeps the family behaviour, where `OP11` also builds `OP11-5.15.149` and `OP11-5.15.167`.
+
 ### Known-unbuildable profiles
 
-72 of 159 profiles cannot be built today. The cause is the same for all of them: the `susfs4ksu` branch for that KMI has been rebased onto a newer kernel, so its `50_add_susfs` patch no longer matches the OnePlus tree the profile pins. The build aborts on the leftover `.rej` rather than shipping a kernel with SUSFS hooks missing.
+None. All 159 profiles apply their patch sequence cleanly against the current `susfs4ksu` tips.
 
-| KMI | Blocked | Failing files |
-|---|---|---|
-| `android13-5.15` | 21 | `fs/namespace.c`, `fs/proc/task_mmu.c` |
-| `android14-6.1` | 51 | `fs/namespace.c` |
+Three hunks in the upstream `50_add_susfs` patches still reject on the OnePlus trees. All three are context mismatches, not missing functionality, so the build adapts them instead of dropping the profile:
 
-Every other KMI builds. `android15-6.6` and `android16-6.12` were on this list until `scripts/check-patches.sh` was taught to reproduce the build's pre-patches: the dry-run was reporting rejects the build never sees, because the build edits a few vendor files before applying the SUSFS patch. Two profiles the old table named, `OP-ACE-5-PRO-6.6.30` and the A16 `OP11`, build fine and are no longer blocked.
+| KMI | File | Why the hunk rejects | How the build handles it |
+|---|---|---|---|
+| `android13-5.15` | `fs/namespace.c` | the hunk carries `#include <trace/hooks/blk.h>` as context and the tree has no `include/trace/hooks/` | `susfs-fix-namespace-headers-gki-5.15.patch` |
+| `android13-5.15` | `fs/proc/task_mmu.c` | both `SUS_MAP` checks are already in the vendor tree | reject dropped, after asserting the checks are present |
+| `android14-6.1` | `fs/namespace.c` | the hunk carries `#include <trace/hooks/blk.h>` as context and the tree ships `include/trace/hooks/fs.h` instead | `susfs-fix-namespace-headers-gki-6.1.patch` |
 
-Each blocked profile carries a `blocked` field with the reason. The build matrix drops them, so selecting a model family builds the siblings that work instead of failing the whole run; the skipped profiles are listed in the run summary. Selecting a model whose every profile is blocked fails immediately with the reason rather than 20 minutes into a patch step. `scripts/validate-configs.py` checks that this list and the `blocked` fields agree, and `scripts/sweep-patches.sh` re-derives the whole thing from scratch.
+The two adapted patches add exactly what the upstream hunk adds, against the context the vendor tree actually has. Each is applied only when the original hunk rejected, so both are no-ops on a base where upstream applies cleanly. The 5.15 `task_mmu.c` case is the reverse: the vendor tree already carries the change, so the reject is dropped rather than re-applied.
 
-<details>
-<summary>All 72 blocked profiles</summary>
-
-**`android13-5.15`**
-
-- `configs/a15/OP-ACE-2-PRO-5.15.149.json`
-- `configs/a15/OP-ACE-2-PRO.json`
-- `configs/a15/OP-ACE-3-5.15.149.json`
-- `configs/a15/OP-ACE-3.json`
-- `configs/a15/OP-NORD-4-CE-5.15.149.json`
-- `configs/a15/OP-NORD-4-CE-5.15.167.json`
-- `configs/a15/OP-NORD-4-CE.json`
-- `configs/a15/OP-OPEN-5.15.149.json`
-- `configs/a15/OP-OPEN.json`
-- `configs/a15/OP11-5.15.149.json`
-- `configs/a15/OP12r-5.15.149.json`
-- `configs/a15/OP12r.json`
-- `configs/a16/OP-ACE-2-PRO.json`
-- `configs/a16/OP-ACE-3-5.15.167.json`
-- `configs/a16/OP-ACE-3.json`
-- `configs/a16/OP-N6.json`
-- `configs/a16/OP-NORD-4-CE.json`
-- `configs/a16/OP-OPEN-5.15.167.json`
-- `configs/a16/OP-OPEN.json`
-- `configs/a16/OP11-5.15.167.json`
-- `configs/a16/OP12r-5.15.167.json`
-
-**`android14-6.1`**
-
-- `configs/a14/OP-ACE-3-PRO.json`
-- `configs/a14/OP-PAD-PRO.json`
-- `configs/a14/OP12.json`
-- `configs/a15/OP-ACE-3-PRO-6.1.75.json`
-- `configs/a15/OP-ACE-3-PRO.json`
-- `configs/a15/OP-ACE-3V-6.1.75.json`
-- `configs/a15/OP-ACE-3V.json`
-- `configs/a15/OP-ACE-5-6.1.75.json`
-- `configs/a15/OP-ACE-5-RACE.json`
-- `configs/a15/OP-ACE-5.json`
-- `configs/a15/OP-NORD-4-6.1.75.json`
-- `configs/a15/OP-NORD-4.json`
-- `configs/a15/OP-NORD-5.json`
-- `configs/a15/OP-NORD-CE-5.json`
-- `configs/a15/OP-NORD-CE4-LITE.json`
-- `configs/a15/OP-PAD-2-SM8650-6.1.75.json`
-- `configs/a15/OP-PAD-2-SM8650.json`
-- `configs/a15/OP-PAD-3-MT6897-6.1.75.json`
-- `configs/a15/OP-PAD-3-MT6897.json`
-- `configs/a15/OP-PAD-PRO-6.1.75.json`
-- `configs/a15/OP-PAD-PRO.json`
-- `configs/a15/OP12-6.1.75.json`
-- `configs/a15/OP12.json`
-- `configs/a15/OP13r-6.1.75.json`
-- `configs/a15/OP13r.json`
-- `configs/a16/OP-ACE-3-PRO-6.1.118.json`
-- `configs/a16/OP-ACE-3-PRO.json`
-- `configs/a16/OP-ACE-3V-6.1.118.json`
-- `configs/a16/OP-ACE-3V.json`
-- `configs/a16/OP-ACE-5-6.1.118.json`
-- `configs/a16/OP-ACE-5-RACE-6.1.134.json`
-- `configs/a16/OP-ACE-5-RACE.json`
-- `configs/a16/OP-ACE-5.json`
-- `configs/a16/OP-NORD-4-6.1.118.json`
-- `configs/a16/OP-NORD-5-6.1.118.json`
-- `configs/a16/OP-NORD-CE-5-6.1.134.json`
-- `configs/a16/OP-NORD-CE-5.json`
-- `configs/a16/OP-NORD-CE4-LITE-6.1.118.json`
-- `configs/a16/OP-NORD-CE4-LITE.json`
-- `configs/a16/OP-NORD-CE6-LITE.json`
-- `configs/a16/OP-PAD-2-SM8650.json`
-- `configs/a16/OP-PAD-3-MT6897.json`
-- `configs/a16/OP-PAD-GO-2.json`
-- `configs/a16/OP-PAD-PRO.json`
-- `configs/a16/OP-TURBO-6V-6.1.118.json`
-- `configs/a16/OP-TURBO-6V.json`
-- `configs/a16/OP-TURBO-6X.json`
-- `configs/a16/OP12-6.1.118.json`
-- `configs/a16/OP12.json`
-- `configs/a16/OP13r-6.1.118.json`
-- `configs/a16/OP13r.json`
-
-</details>
+`scripts/validate-configs.py` cross-checks this section against the `blocked` fields, and `scripts/sweep-patches.sh` re-derives the whole thing from scratch. A profile that stops applying gets a `blocked` field and a line here.
 
 ### Tested on hardware
 

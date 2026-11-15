@@ -140,6 +140,14 @@ jobs:
           path: susfs4ksu
           retention-days: 1
           if-no-files-found: error
+          # The fetch step runs `git init` + `git fetch` and never checks
+          # anything out, so the only content is .git/. upload-artifact skips
+          # hidden files by default, which made this step fail with "No files
+          # were found with the provided path: susfs4ksu" on every run. The
+          # build action needs susfs4ksu/.git to resolve the refs offline
+          # (see the `-d susfs4ksu/.git` check in build-kernel/action.yml), so
+          # the hidden files are the payload, not an accident.
+          include-hidden-files: true
 
   warm-cache:
     name: ${{ matrix.model }} (${{ matrix.os_version }})
