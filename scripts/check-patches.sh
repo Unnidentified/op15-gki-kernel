@@ -73,6 +73,43 @@ PY
 [ -n "${kernel_url:-}" ] || fail "no kernel source project in $manifest_path"
 log "kernel source: $kernel_url @ $kernel_ref"
 
+# A pinned SHA has to exist in the repository it names. This dry-run only
+# fetches the kernel source project, so a bad pin on any other project is
+# invisible here and surfaces as a 404 in the build's repo sync instead. That
+# is exactly how a1608e09 - valid in android_kernel_common_oneplus_sm8850 but
+# not in android_kernel_modules_and_devicetree_oneplus_sm8850 - got through CI
+# and failed the build.
+check_pinned_revisions() {
+  python3 - "$manifest_path" <<'PY'
+import sys, xml.etree.ElementTree as ET
+
+root = ET.parse(sys.argv[1]).getroot()
+remotes = {r.get("name"): r.get("fetch") for r in root.findall("remote")}
+for p in root.findall("project"):
+    rev = p.get("revision") or ""
+    if len(rev) != 40 or any(c not in "0123456789abcdef" for c in rev):
+        continue
+    fetch = (remotes.get(p.get("remote")) or "").rstrip("/")
+    # Only GitHub serves /archive/<sha>.tar.gz predictably; other remotes are
+    # left to the build.
+    if "github.com" not in fetch:
+        continue
+    print(f"{fetch}/{p.get('name')}/archive/{rev}.tar.gz")
+PY
+}
+
+while read -r url; do
+  [ -n "$url" ] || continue
+  code=$(curl -sSL -o /dev/null -w '%{http_code}' --max-time 30 "$url" 2>/dev/null || echo 000)
+  if [ "$code" != "200" ]; then
+    # One retry: a transient 5xx should not fail the gate.
+    sleep 2
+    code=$(curl -sSL -o /dev/null -w '%{http_code}' --max-time 30 "$url" 2>/dev/null || echo 000)
+  fi
+  [ "$code" = "200" ] || fail "pinned revision does not resolve (HTTP $code): $url"
+  log "pinned revision ok: $(basename "$(dirname "$(dirname "$url")")") @ $(basename "$url" .tar.gz)"
+done < <(check_pinned_revisions)
+
 patches_dir="$repo_root/.github/actions/build-kernel/patches"
 susfs_branch="gki-${android}-${kernel}"
 
