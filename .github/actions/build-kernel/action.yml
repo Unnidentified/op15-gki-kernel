@@ -1538,10 +1538,10 @@ runs:
           exit "$susfs_patch_rc"
         fi
         
-        # The adapted SUSFS fixups live in their own script: this run block
-        # is compiled as a single expression because it contains ${{ }}, and
-        # GitHub rejects anything over 21,000 characters with "The template
-        # is not valid ... Exceeded max expression length 21000".
+        # The adapted SUSFS fixups live in their own script: a run block that
+        # contains an expression is compiled as one expression, and GitHub
+        # rejects anything over 21,000 characters with "The template is not
+        # valid ... Exceeded max expression length 21000".
         KERNEL_VER="${{ env.KERNEL_VER }}" \
           bash "${GITHUB_ACTION_PATH}/patches/apply-susfs-fixups.sh"
         
