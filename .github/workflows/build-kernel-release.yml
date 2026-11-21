@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       custom_release_tag:
-        description: 'Provide a custom release tag (e.g., v6.12.69-OP15-COS17-SUSFS2.3.0-KSUB-r1). Leave empty to auto-generate.'
+        description: 'Provide a custom release tag (e.g., v2.3.0-r4). Leave empty to auto-generate.'
         required: false
         type: string
         default: ''
@@ -660,34 +660,20 @@ jobs:
             echo "   SUSFS version unresolved, no release tag"
             echo "::warning::SUSFS_VERSION did not resolve, so the zips will not carry a release revision. Set custom_release_tag to override."
           else
-            manifest_name=$(jq -r '.[0].manifest // ""' matrix.json 2>/dev/null || true)
-            if [[ "$manifest_name" =~ ([0-9]+\.[0-9]+\.[0-9]+) ]]; then
-              kver_tag="${BASH_REMATCH[1]}"
-            else
-              kver_tag=$(jq -r '.[0].kernel_version // "6.12"' matrix.json 2>/dev/null || echo "6.12")
-            fi
-            model_tag="${{ inputs.op_model }}"
-            if [ -z "$model_tag" ] || [ "$model_tag" = "All" ]; then
-              model_tag=$(jq -r '.[0].model // "OP15-COS17"' matrix.json 2>/dev/null || echo "OP15-COS17")
-            fi
-            susfs_clean="SUSFS${base#v}"
-            ksu_suffix="KSU$([ "${{ inputs.ksu_mode }}" = "lkm" ] && echo "L" || echo "B")"
-            tag_prefix="v${kver_tag}-${model_tag}-${susfs_clean}-${ksu_suffix}"
-
             max_rev=0
             while IFS= read -r name; do
               [ -n "$name" ] || continue
               case "$name" in
-                "${tag_prefix}-r"*)
-                  rev="${name#"${tag_prefix}-r"}"
+                "${base}-r"*)
+                  rev="${name#"${base}-r"}"
                   if [[ "$rev" =~ ^[0-9]+$ ]] && [ "$rev" -gt "$max_rev" ]; then
                     max_rev="$rev"
                   fi
                   ;;
               esac
             done < <(gh api "repos/${{ github.repository }}/tags" --paginate --jq '.[].name' 2>/dev/null || true)
-            tag="${tag_prefix}-r$((max_rev + 1))"
-            echo "   highest existing revision for ${tag_prefix}: ${max_rev}, next: $tag"
+            tag="${base}-r$((max_rev + 1))"
+            echo "   highest existing revision for $base: ${max_rev}, next: $tag"
           fi
 
           echo "release_tag=$tag" >> "$GITHUB_OUTPUT"
@@ -891,7 +877,7 @@ jobs:
           if [ -n "$CUSTOM_CHANGELOG" ]; then
             CHANGELOG_TEXT="$CUSTOM_CHANGELOG"
           elif [ -n "$PREV_TAG" ]; then
-            CHANGELOG_TEXT=$(git log "$PREV_TAG..HEAD" --oneline -n 20 --pretty=format:"- %s (%h)" || git log -n 15 --oneline --pretty=format:"- %s (%h)")
+            CHANGELOG_TEXT=$(git log "$PREV_TAG..HEAD" --oneline -n 15 --pretty=format:"- %s (%h)" || git log -n 15 --oneline --pretty=format:"- %s (%h)")
           else
             CHANGELOG_TEXT=$(git log -n 15 --oneline --pretty=format:"- %s (%h)")
           fi
@@ -899,10 +885,10 @@ jobs:
 
           python3 - <<'PY'
           import datetime
-          import glob
           import json
           import os
           import pathlib
+          import subprocess
 
           repo_owner = os.environ["REPO_OWNER"]
           repo_name = os.environ["REPO_NAME"]
@@ -927,156 +913,89 @@ jobs:
               if zip_path is None and zip_files:
                   stem = p.name.removesuffix("_build-info.json")
                   zip_path = zip_files.get(f"{stem}.zip")
-              size_mb = f"{zip_path.stat().st_size / (1024 * 1024):.2f} MiB" if zip_path and zip_path.is_file() else "unknown"
-              builds.append((data, p.name, size_mb))
+              zsha = (data.get("artifact", {}) or {}).get("zip_sha256") or ""
+              if zip_path and zip_path.is_file():
+                  zsha = subprocess.check_output(["sha256sum", str(zip_path)], text=True).split()[0]
+              builds.append((data, p.name, zsha or "unavailable"))
 
-          rev_token = ""
-          if "-r" in new_tag and new_tag.rsplit("-r", 1)[1].isdigit():
-              rev_token = f"r{new_tag.rsplit('-r', 1)[1]}"
-
-          if builds:
-              first = builds[0][0]
-              dev = first.get("device", {})
-              kern = first.get("kernel", {})
-              ksu = first.get("ksu", {})
-              susfs = first.get("susfs", {})
-              feat = first.get("features", {})
-              tc = first.get("toolchain", {})
-
-              model = dev.get("model", "OP15-COS17")
-              os_ver = dev.get("os_version", "A16")
-              k_full = kern.get("full_version") or kern.get("version") or "6.12.69"
-              k_short = k_full.removeprefix("android16-")
-              ksu_ver = ksu.get("version") or "unknown"
-              sus_ver = susfs.get("version") or susfs_base
-              mode_label = "Builtin" if ksu_mode != "lkm" else "LKM"
-
-              highlights = []
-              if feat.get("bore"): highlights.append("BORE")
-              if feat.get("adios"): highlights.append("ADIOS")
-              if feat.get("damon"): highlights.append("DAMON")
-              if feat.get("kasan_hw_tags"): highlights.append("KASANhw")
-              if feat.get("autofdo"): highlights.append("AFDO")
-              if feat.get("mlgo"): highlights.append("MLGO")
-              if feat.get("bbr3"): highlights.append("BBR3")
-              hl_str = " · ".join(highlights) if highlights else feat.get("feature_tag", "")
-              rev_str = f" [{rev_token}]" if rev_token else ""
-              release_title = f"{model} | {k_short}-{os_ver} | SukiSU-Ultra {ksu_ver} ({mode_label}) + SUSFS {sus_ver} | {hl_str}{rev_str}"
-          else:
-              release_title = f"OnePlus 15 (ColorOS 17) Kernel {new_tag}"
-              ksu_ver = "unknown"
-              sus_ver = susfs_base
+          ksu_ver_global = builds[0][0].get("ksu", {}).get("version") or "unknown" if builds else "unknown"
+          now_utc = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+          release_title = f"OnePlus 15 (ColorOS 17) Kernel With SukiSU-Ultra & SUSFS {susfs_base}"
 
           with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env_f:
               env_f.write(f"RELEASE_TITLE={release_title}\n")
 
-          now_utc = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
           lines = [
-              f"# {release_title}",
+              f"# OnePlus 15 (ColorOS 17) Kernel {new_tag}",
               "",
-              f"Built: {now_utc} | Tag: `{new_tag}` | Workflow Run: `{run_id}`",
+              f"Built: {now_utc} | Run: `{run_id}` | SukiSU-Ultra {ksu_ver_global} | SUSFS {susfs_base}",
               "",
-              f"## Downloads ({len(builds) or len(zip_files)})",
+              f"## Built zips ({len(builds) or len(zip_files)})",
               "",
           ]
 
-          if builds:
-              for data, info_name, size_mb in builds:
-                  dev = data.get("device", {})
-                  kern = data.get("kernel", {})
-                  art = data.get("artifact", {})
-                  feat = data.get("features", {})
-                  tc = data.get("toolchain", {})
-                  ksu = data.get("ksu", {})
-                  susfs = data.get("susfs", {})
+          for data, _, zsha in builds:
+              dev = data.get("device", {})
+              kern = data.get("kernel", {})
+              art = data.get("artifact", {})
+              zname = art.get("zip_name", "")
+              zurl = f"https://github.com/{repo_owner}/{repo_name}/releases/download/{new_tag}/{zname}"
+              lines.append(f"- [`{zname}`]({zurl}) - {dev.get('model')}, {dev.get('os_version')}, kernel `{kern.get('full_version')}`")
+              lines.append(f"  - `sha256: {zsha}`")
 
-                  zname = art.get("zip_name", "")
-                  zsha = art.get("zip_sha256", "unavailable")
-                  isha = kern.get("image_sha256", "unavailable")
-                  zurl = f"https://github.com/{repo_owner}/{repo_name}/releases/download/{new_tag}/{zname}"
-                  iurl = f"https://github.com/{repo_owner}/{repo_name}/releases/download/{new_tag}/{info_name}"
-
-                  lines.extend([
-                      f"### [`{zname}`]({zurl}) ({size_mb})",
-                      "",
-                      f"- **Device / SoC**: `{dev.get('model')}` ({dev.get('soc', 'SM8850')}, {dev.get('os_version')})",
-                      f"- **Kernel**: `{kern.get('full_version')}` (`{kern.get('uname') or kern.get('source_ref')}`)",
-                      f"- **Feature Tag**: `{feat.get('feature_tag', '')}`",
-                      f"- **SukiSU-Ultra**: `{ksu.get('version')}` (`{ksu_mode}`, commit `{(ksu.get('commit') or '')[:8]}`)",
-                      f"- **SUSFS**: `{susfs.get('version')}` (commit `{(susfs.get('commit') or '')[:8]}`)",
-                      f"- **Compiler / Opts**: `{tc.get('clang') or 'clang'}` (`-{feat.get('optimization', 'O2')}`, LTO `{feat.get('lto', 'none')}`, AutoFDO `{feat.get('autofdo')}`, MLGO `{feat.get('mlgo')}`)",
-                      f"- **ZIP SHA256**: `{zsha}`",
-                      f"- **Image SHA256**: `{isha}`",
-                      f"- **Provenance JSON**: [`{info_name}`]({iurl})",
-                      "",
-                  ])
-
-                  sched_tokens = []
-                  if feat.get("bore"): sched_tokens.append("BORE")
-                  if feat.get("adios"): sched_tokens.append("ADIOS")
-                  if feat.get("damon"): sched_tokens.append("DAMON")
-                  sched_tokens.append("KASANhw" if feat.get("kasan_hw_tags") else "NoKASAN")
-                  lto_code = {"none": "LTOn", "thin": "LTOt", "full": "LTOf"}.get(feat.get("lto", "none"), "LTOx")
-                  cc_tokens = [feat.get("optimization", "O2"), lto_code]
-                  if feat.get("autofdo"): cc_tokens.append("AFDO")
-                  if feat.get("mlgo"): cc_tokens.append("MLGO")
-
-                  soc_token = (kern.get("branch", "").rsplit("/", 1)[-1] or dev.get("soc", "SM8850")).upper()
-                  lines.extend([
-                      "#### Filename Feature Decoder",
-                      "",
-                      "| Segment | Value | Meaning |",
-                      "|---|---|---|",
-                      f"| Target / SoC | `{dev.get('model')}_{soc_token}` | OnePlus 15 ColorOS 17 ({dev.get('soc', 'SM8850')}) |",
-                      f"| Kernel / OS | `{kern.get('full_version', '').removeprefix('android16-')}-{dev.get('os_version')}` | Android 16 GKI 6.12 kernel base |",
-                      f"| Root / Hiding | `KSU{ksu.get('version', '0')}{'B' if ksu_mode != 'lkm' else 'L'}-SUSFS{(susfs.get('version') or '0').lstrip('v').replace('.', '')}` | SukiSU-Ultra ({'in-tree builtin' if ksu_mode != 'lkm' else 'LKM'}) + SUSFS {susfs.get('version', '')} |",
-                      f"| Scheduler / MM | `{'-'.join(sched_tokens)}` | BORE CPU scheduler, ADIOS I/O, DAMON memory reclaim, KASAN_HW_TAGS vendor ABI parity |",
-                      f"| Toolchain | `{'-'.join(cc_tokens)}` | Clang optimization, LTO mode, AutoFDO PGO, MLGO inlining/regalloc |",
-                      f"| Net / Guard | `{'BBR3' if feat.get('bbr3') else 'BBR'}-TTL-IPSET-UNI-{'BBG' if feat.get('bbg') else 'NoBBG'}` | BBRv3 + netfilter modules + Unicode fix + Baseband Guard off (EFISP safe) |",
-                      "",
-                  ])
-          else:
-              for zname, zp in zip_files.items():
-                  zurl = f"https://github.com/{repo_owner}/{repo_name}/releases/download/{new_tag}/{zname}"
-                  lines.append(f"- [`{zname}`]({zurl})")
-              lines.append("")
-
+          lines.extend(["", "## Tested on hardware", ""])
           tested_rows = [
               (m.get("model"), m.get("os_version"), m.get("tested"))
               for m in matrix_data
               if m.get("tested")
           ]
-          lines.extend(["## Tested on hardware", ""])
           if tested_rows:
               lines.extend(["| Profile | OS | What was verified |", "|---|---|---|"])
               for m_model, m_os, m_note in tested_rows:
                   lines.append(f"| `{m_model}` | {m_os} | {m_note} |")
               lines.append("")
-          else:
-              lines.append("No hardware test record is attached to `matrix.json` for this run.")
-              lines.append("")
 
           lines.extend([
-              "## Kernel Notes & Security",
+              "## Build provenance",
               "",
-              "- **ABI & Boot Invariants**: Built with `CONFIG_KASAN_HW_TAGS=y` to export `kasan_flag_enabled` expected by stock ColorOS 17 vendor modules (bootloader keeps `kasan=off` at runtime so no MTE slowdown occurs) and `MAX_LSM_COUNT` slot space so `ksu` initializes alongside stock `bpf`/`selinux`/`landlock` hooks.",
-              "- **Baseband Guard (`NoBBG`)**: Disabled so [EFISP/bootloader-spoof](https://xdaforums.com/t/efisp-root-gbl-chainload-efisp-chainloader-for-oneplus-15.4786301/) chains work without interference.",
-              "- **Security Backports**: Includes CVE-2026-99103, CVE-2026-99136, CVE-2026-99138, CVE-2026-99139, CVE-2026-99167 and `CONFIG_LIST_HARDENED=y`.",
+              "Every zip ships a `build-info.json` recording the exact kernel source commit, the SUSFS and SukiSU-Ultra revisions, the toolchain, and the image/zip checksums.",
               "",
-              "## Flashing Instructions",
+          ])
+          for _, info_name, _ in builds:
+              iurl = f"https://github.com/{repo_owner}/{repo_name}/releases/download/{new_tag}/{info_name}"
+              lines.append(f"- [`{info_name}`]({iurl})")
+
+          lines.extend([
               "",
-              "> [!IMPORTANT]",
-              "> Back up your stock `boot` and `init_boot` partitions first. If switching from SukiSU LKM (`init_boot` patched) to this **Builtin** kernel, restore stock `init_boot` (or uninstall LKM in SukiSU Manager) so LKM and Builtin hooks do not conflict.",
+              "## Kernel contents",
               "",
-              "1. Verify the downloaded `.zip` against its SHA256 above (`sha256sum <file>.zip`).",
-              "2. Flash via Kernel Flasher / Horizon Kernel Flasher or custom recovery (or repack `Image` inside the zip against your stock `boot.img`).",
-              "3. Reboot and install/open the [SukiSU-Ultra Manager](https://github.com/SukiSU-Ultra/SukiSU-Ultra/releases).",
+              f"- [SukiSU-Ultra](https://github.com/SukiSU-Ultra/SukiSU-Ultra) {ksu_ver_global}, compiled `{ksu_mode}`. Install the manager APK from its [releases](https://github.com/SukiSU-Ultra/SukiSU-Ultra/releases).",
+              f"- [SUSFS](https://gitlab.com/simonpunk/susfs4ksu) {susfs_base} - magic mount, SUS_PATH / SUS_MOUNT / SUS_KSTAT / SUS_MAP, uname & cmdline spoofing, open redirect.",
+              "- Scheduler, memory & network: BORE, ADIOS, DAMON, BBR/BBR3, TTL, IP set, Unicode bypass, and 6.12 CVE backports.",
+              "- [Baseband Guard](https://github.com/vc-teahouse/Baseband-guard) stays disabled, so [EFISP/bootloader-spoof](https://xdaforums.com/t/efisp-root-gbl-chainload-efisp-chainloader-for-oneplus-15.4786301/) chains keep working.",
+              "",
+              "## Verifying your download",
+              "",
+              "Compare the checksum of the file you downloaded against the one listed above:",
+              "",
+              "```sh",
+              "sha256sum <your-zip>.zip",
+              "```",
+              "",
+              "A mismatch means a truncated or tampered download - do not flash it.",
+              "",
+              "## Flashing",
+              "",
+              "Back up stock `boot` and `init_boot` before flashing. If switching from SukiSU LKM (`init_boot` patched) to a `builtin` kernel, restore stock `init_boot` first. Flash the zip with [Kernel Flasher](https://github.com/fatalcoder524/KernelFlasher) or [Horizon Kernel Flasher](https://github.com/libxzr/HorizonKernelFlasher), reboot, then install the SukiSU-Ultra manager APK.",
               "",
               "## Changelog",
               "",
               "```text",
               changelog_text or "Initial release",
               "```",
+              "",
+              "### Previous Releases",
+              f"See the [Releases page](https://github.com/{repo_owner}/{repo_name}/releases).",
           ])
 
           pathlib.Path("release_notes.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
