@@ -1159,6 +1159,25 @@ runs:
             fi
           done
 
+          # Linux 6.8+ sizes lsm_idlist[] / static_calls_table[] via
+          # MAX_LSM_COUNT in include/linux/lsm_count.h. Builtin SukiSU registers
+          # an extra LSM via security_add_hooks() at device_initcall(), which
+          # panics with "Too many LSMs registered" when all mainline slots are
+          # already full (e.g. 5/5 on android16-6.12 gki_defconfig).
+          lsm_count_patch="${GITHUB_ACTION_PATH}/patches/sukisu-lsm-count-6.12.patch"
+          if [ -f "$COMMON_KERNEL_FOLDER/include/linux/lsm_count.h" ] && \
+             grep -q 'security_add_hooks(' "$(pwd)/KernelSU/kernel/hook/lsm_hook.c" 2>/dev/null; then
+            if patch -p1 --dry-run --forward -d "$COMMON_KERNEL_FOLDER" < "$lsm_count_patch" >/dev/null 2>&1; then
+              patch -p1 --forward -d "$COMMON_KERNEL_FOLDER" < "$lsm_count_patch"
+              echo " Applied LSM slot reservation patch: sukisu-lsm-count-6.12"
+            elif grep -q 'KSU_LSM_ENABLED' "$COMMON_KERNEL_FOLDER/include/linux/lsm_count.h"; then
+              echo " LSM slot reservation already present in include/linux/lsm_count.h"
+            else
+              echo "::error::Failed to apply sukisu-lsm-count-6.12.patch to $COMMON_KERNEL_FOLDER/include/linux/lsm_count.h"
+              exit 1
+            fi
+          fi
+
           # Out-of-tree (O=out) builds resolve the preinit runner prerequisite
           # through a relative $(srctree)/$(src) and fail with "No rule to make
           # target .../preinit/runner/runner.c". Force an absolute KSU_KERNEL_DIR

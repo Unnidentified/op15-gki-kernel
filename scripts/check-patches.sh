@@ -151,6 +151,9 @@ fi
 [ "$bore" = "true" ] && add_patch_paths "$patches_dir/bore_6.12.patch"
 [ "$adios" = "true" ] && add_patch_paths "$patches_dir/adios_ioscheduler_6.12.patch"
 add_patch_paths "$patches_dir/susfs-fix-task_mmu-sus-map-gki-6.12.patch"
+if [ "$kernel" = "6.12" ]; then
+  add_patch_paths "$patches_dir/sukisu-lsm-count-6.12.patch"
+fi
 
 # The CVE backports are applied on every 6.12 profile, so their paths are
 # always needed when the base is 6.12.
@@ -259,6 +262,7 @@ fi
 # Applied unconditionally on 6.12, matching the build. These are security
 # fixes, not profile features, so there is no flag to turn them off.
 if [ "$kernel" = "6.12" ]; then
+  apply "SukiSU LSM slot count" "$patches_dir/sukisu-lsm-count-6.12.patch"
   for p in "$patches_dir"/cve-*-6.12.patch; do
     apply "CVE backport $(basename "$p" .patch)" "$p"
   done

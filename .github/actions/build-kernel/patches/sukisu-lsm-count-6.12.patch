@@ -1,0 +1,41 @@
+From: oplus-sukisu_kernel maintainers
+Subject: [PATCH] lsm_count: reserve a static-call slot for builtin CONFIG_KSU
+
+Linux 6.12 sizes lsm_idlist[] and static_calls_table[] at compile time via
+MAX_LSM_COUNT in include/linux/lsm_count.h, counting only the 14 mainline LSM
+Kconfig symbols. On stock android16-6.12 gki_defconfig (CAPABILITIES, SELINUX,
+SAFESETID, BPF_LSM, LANDLOCK), MAX_LSM_COUNT evaluates to 5 and all 5 slots are
+taken during security_init().
+
+When SukiSU-Ultra builtin runs ksu_lsm_hook_init() from device_initcall() and
+calls security_add_hooks(..., &ksu_lsm_id), security_add_hooks() sees
+lsm_active_cnt >= MAX_LSM_COUNT (5 >= 5) and panics before userspace starts.
+
+Account for CONFIG_KSU in MAX_LSM_COUNT so SukiSU gets its own slot.
+
+diff --git a/include/linux/lsm_count.h b/include/linux/lsm_count.h
+--- a/include/linux/lsm_count.h
++++ b/include/linux/lsm_count.h
+@@ -100,6 +100,12 @@
+ #define IPE_ENABLED
+ #endif
+ 
++#if IS_ENABLED(CONFIG_KSU)
++#define KSU_LSM_ENABLED 1,
++#else
++#define KSU_LSM_ENABLED
++#endif
++
+ /*
+  *  There is a trailing comma that we need to be accounted for. This is done by
+  *  using a skipped argument in __COUNT_LSMS
+@@ -122,7 +128,8 @@
+ 		LANDLOCK_ENABLED	\
+ 		IMA_ENABLED		\
+ 		EVM_ENABLED		\
+-		IPE_ENABLED)
++		IPE_ENABLED		\
++		KSU_LSM_ENABLED)
+ 
+ #else
+ 
