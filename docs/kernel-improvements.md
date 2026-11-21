@@ -46,4 +46,4 @@ Every toggle listed here is driven from [`configs/a16/OP15-COS17.json`](../confi
 
 1. **Resolved `.config` audit**: Verifies `CONFIG_SCHED_BORE=y`, `CONFIG_MQ_IOSCHED_ADIOS=y`, `CONFIG_DAMON=y`, `CONFIG_AUTOFDO_CLANG=y`, `CONFIG_NTSYNC=y`, `CONFIG_SYSVIPC=y`, `CONFIG_PID_NS=y`, `CONFIG_USER_NS=y`, `CONFIG_POSIX_MQUEUE=y`, `CONFIG_LIST_HARDENED=y`, and `CONFIG_KASAN_HW_TAGS=y` after `olddefconfig`.
 2. **Binary `Image` verification**: Asserts `kasan_flag_enabled`, variant-specific builtin root hooks (`LSM hooks initialized.` for SukiSU-Ultra; `welcome to KernelSU version` + `Inline (SuSFS)` for KernelSU-Next), and `susfs is initialized!`.
-3. **KMI / ABI check**: Builds `Image modules` so `out/Module.symvers` is always generated and audited against `gki/aarch64/abi.stg` via `scripts/kmi-check.py`.
+3. **KMI / ABI check**: Builds `Image modules` so `out/Module.symvers` is always generated and audited against `gki/aarch64/abi.stg` via `scripts/kmi-check.py` (`10,198` ABI symbols, `0` missing, `0` `task_struct` CRC changes with `ds: true` kABI union, and `8` expected `tcp_*` CRC changes from the BBRv3 backport).
