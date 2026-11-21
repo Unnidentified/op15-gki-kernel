@@ -839,6 +839,7 @@ jobs:
 
       - name: List Downloaded Artifacts
         run: |
+          rm -f ./downloaded-artifacts/ccache-binary.zip
           echo "=== Downloaded artifacts ==="
           if [ -d "./downloaded-artifacts" ]; then
             find ./downloaded-artifacts -type f | sort
@@ -886,11 +887,11 @@ jobs:
           set -euo pipefail
           echo "=== Start building the release notes ==="
 
-          PREV_TAG=$(git tag --sort=-creatordate | grep -v -E "^(${NEW_TAG}|ccache-cache|toolchain-cache)$" | head -n1 || true)
+          PREV_TAG=$(git tag --merged HEAD --sort=-creatordate | grep -v -E "^(${NEW_TAG}|ccache-cache|toolchain-cache)$" | head -n1 || true)
           if [ -n "$CUSTOM_CHANGELOG" ]; then
             CHANGELOG_TEXT="$CUSTOM_CHANGELOG"
           elif [ -n "$PREV_TAG" ]; then
-            CHANGELOG_TEXT=$(git log "$PREV_TAG..HEAD" --oneline --pretty=format:"- %s (%h)" || git log -n 15 --oneline --pretty=format:"- %s (%h)")
+            CHANGELOG_TEXT=$(git log "$PREV_TAG..HEAD" --oneline -n 20 --pretty=format:"- %s (%h)" || git log -n 15 --oneline --pretty=format:"- %s (%h)")
           else
             CHANGELOG_TEXT=$(git log -n 15 --oneline --pretty=format:"- %s (%h)")
           fi
@@ -1020,12 +1021,13 @@ jobs:
                   if feat.get("autofdo"): cc_tokens.append("AFDO")
                   if feat.get("mlgo"): cc_tokens.append("MLGO")
 
+                  soc_token = (kern.get("branch", "").rsplit("/", 1)[-1] or dev.get("soc", "SM8850")).upper()
                   lines.extend([
                       "#### Filename Feature Decoder",
                       "",
                       "| Segment | Value | Meaning |",
                       "|---|---|---|",
-                      f"| Target / SoC | `{dev.get('model')}_{dev.get('soc', 'SM8850')}` | OnePlus 15 ColorOS 17 on Snapdragon 8 Elite Gen 5 |",
+                      f"| Target / SoC | `{dev.get('model')}_{soc_token}` | OnePlus 15 ColorOS 17 ({dev.get('soc', 'SM8850')}) |",
                       f"| Kernel / OS | `{kern.get('full_version', '').removeprefix('android16-')}-{dev.get('os_version')}` | Android 16 GKI 6.12 kernel base |",
                       f"| Root / Hiding | `KSU{ksu.get('version', '0')}{'B' if ksu_mode != 'lkm' else 'L'}-SUSFS{(susfs.get('version') or '0').lstrip('v').replace('.', '')}` | SukiSU-Ultra ({'in-tree builtin' if ksu_mode != 'lkm' else 'LKM'}) + SUSFS {susfs.get('version', '')} |",
                       f"| Scheduler / MM | `{'-'.join(sched_tokens)}` | BORE CPU scheduler, ADIOS I/O, DAMON memory reclaim, KASAN_HW_TAGS vendor ABI parity |",
