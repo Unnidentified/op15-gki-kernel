@@ -192,23 +192,23 @@ def main() -> int:
             if isinstance(tested, str) and isinstance(model, str):
                 tested_models.add(model)
 
-    documented = readme_blocked_configs()
-    if documented is None:
-        errors.append(
-            f"README.md: no '{BLOCKED_HEADING}' section, so the blocked profiles "
-            f"cannot be cross-checked against the prose"
-        )
-    else:
-        for path in sorted(blocked_configs - documented):
+    if blocked_configs:
+        documented = readme_blocked_configs()
+        if documented is None:
             errors.append(
-                f"README.md: {path!r} is blocked in its config but missing from "
-                f"the known-unbuildable list"
+                f"README.md: blocked profile(s) exist but '{BLOCKED_HEADING}' section is missing"
             )
-        for path in sorted(documented - blocked_configs):
-            errors.append(
-                f"README.md: {path!r} is listed as unbuildable but its config has "
-                f"no 'blocked' field"
-            )
+        else:
+            for path in sorted(blocked_configs - documented):
+                errors.append(
+                    f"README.md: {path!r} is blocked in its config but missing from "
+                    f"the known-unbuildable list"
+                )
+            for path in sorted(documented - blocked_configs):
+                errors.append(
+                    f"README.md: {path!r} is listed as unbuildable but its config has "
+                    f"no 'blocked' field"
+                )
 
     if errors:
         print(f"config validation failed ({len(errors)} problem(s)):", file=sys.stderr)

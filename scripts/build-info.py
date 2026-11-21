@@ -19,7 +19,7 @@ import sys
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def sha256_file(path):
@@ -105,16 +105,22 @@ def build_parser():
 
     features = parser.add_argument_group("features")
     features.add_argument("--lto", default="", help="effective LTO mode, after any override")
+    features.add_argument("--optimization", default="", help="compiler optimization flag (O2/O3)")
     features.add_argument("--autofdo", default="", help="'true' when AutoFDO was used")
     features.add_argument("--autofdo-profile-sha256", default="")
     features.add_argument("--damon", default="")
     features.add_argument("--bore", default="")
     features.add_argument("--adios", default="")
     features.add_argument("--mlgo", default="")
+    features.add_argument("--kasan", default="")
+    features.add_argument("--bbg", default="")
+    features.add_argument("--bbr3", default="")
+    features.add_argument("--feature-tag", default="", help="encoded feature identifier string")
     features.add_argument("--patchset-commit", default="", help="commit of the external kernel_patches repo")
 
     artifact = parser.add_argument_group("artifact")
     artifact.add_argument("--zip", default="", help="path to the AnyKernel3 zip")
+    artifact.add_argument("--release-tag", default="", help="resolved release tag if any")
 
     build = parser.add_argument_group("build")
     build.add_argument("--run-id", default="")
@@ -184,16 +190,24 @@ def main(argv=None):
         },
         "toolchain": {"clang": args.clang},
         "features": {
+            "feature_tag": args.feature_tag,
             "lto": args.lto,
+            "optimization": args.optimization,
             "autofdo": args.autofdo == "true",
             "autofdo_profile_sha256": args.autofdo_profile_sha256,
             "damon": args.damon == "true",
             "bore": args.bore == "true",
             "adios": args.adios == "true",
             "mlgo": args.mlgo == "true",
+            "kasan_hw_tags": args.kasan == "true",
+            "bbg": args.bbg == "true",
+            "bbr3": args.bbr3 == "true",
             "patchset_commit": args.patchset_commit,
         },
-        "artifact": artifact,
+        "artifact": {
+            **artifact,
+            **({"release_tag": args.release_tag} if args.release_tag else {}),
+        },
         "build": {
             "run_id": args.run_id,
             "run_attempt": args.run_attempt,

@@ -1,5 +1,9 @@
 name: Cache Warmer
 
+permissions:
+  contents: write
+  actions: write
+
 on:
   schedule:
     - cron: '0 0 * * *' # Run daily at midnight
@@ -26,7 +30,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          echo "susfs_hash_android16_6_12=acb92d4abc922cac384a207744b2db40281a7c7f" >> "$GITHUB_OUTPUT"
+          echo "susfs_hash_android16_6_12=c6788e2a21dc717beb7dd3a36b729b58bc909927" >> "$GITHUB_OUTPUT"
 
           echo "[" > matrix.json
           mapfile -t all_json_files < <(find configs/ -mindepth 2 -name "*.json" -print0 | xargs -0 -n1)
@@ -130,6 +134,10 @@ jobs:
     name: ${{ matrix.model }} (${{ matrix.os_version }})
     needs: [generate-matrix, prepare_ccache, prepare-susfs]
     runs-on: ubuntu-latest
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      LDCACHE_DIR: ${{ github.workspace }}/.ld_cache
+      CCACHE_LOGFILE: ${{ github.workspace }}/ccache.log
     strategy:
       fail-fast: false
       max-parallel: 2
@@ -161,7 +169,7 @@ jobs:
           echo "::endgroup::"
 
       - name: Get prebuilt ccache (downloaded once by prepare_ccache)
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ccache-binary
           path: ccache-dl
@@ -227,7 +235,7 @@ jobs:
           echo "::endgroup::"
 
       - name: Get prebuilt SUSFS source (shared, avoids per-job GitLab fetches)
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: susfs4ksu-src
           path: .

@@ -1,43 +1,76 @@
-# OnePlus 15 ColorOS 17 Kernel
+# OnePlus 15 (ColorOS 17) GKI Kernel
 
-Automated GKI kernel builder for the OnePlus 15 (`CPH2747` / `PLK110`) running stock ColorOS 17, built with SukiSU-Ultra and SUSFS.
+Custom `android16-6.12.69` kernel for the OnePlus 15 (`SM8850`) running ColorOS 17, built with in-tree [SukiSU-Ultra](https://github.com/SukiSU-Ultra/SukiSU-Ultra), pinned [SUSFS](https://gitlab.com/simonpunk/susfs4ksu), BORE CPU scheduling, ADIOS I/O, DAMON memory monitoring, and BBRv3. Every release zip ships a matching `_build-info.json` provenance manifest and SHA-256 checksums.
 
-## Target profile
+## Verified Status
 
-| Field | Value |
+| Profile | Hardware | Kernel | Verified State |
+|---|---|---|---|
+| [`OP15-COS17`](configs/a16/OP15-COS17.json) | OnePlus 15 (`CPH2747`) | `6.12.69-android16-6-g242e1a07f878` | Booted on ColorOS 17: SukiSU-Ultra `34692` builtin (`uid=0`, `u:r:ksu:s0`), SUSFS `v2.3.0`, BORE (`sched_bore=1`), `[adios]`, DAMON sysfs, `reno bbr bbr3 cubic`, 668 loaded vendor modules |
+
+## Included Stack
+
+- **Root**: [SukiSU-Ultra](https://github.com/SukiSU-Ultra/SukiSU-Ultra) compiled in-tree (`builtin`, `CONFIG_KSU_SUSFS=y`). LKM packaging remains available via workflow input (`ksu_mode: lkm`).
+- **Root hiding**: [SUSFS](https://gitlab.com/simonpunk/susfs4ksu) pinned at `c6788e2a21dc717beb7dd3a36b729b58bc909927` (`v2.3.0`).
+- **Schedulers & memory**: [BORE](https://github.com/firelzrd/bore-scheduler) CPU scheduler, ADIOS block I/O scheduler, and DAMON reclaim/monitoring.
+- **Compiler & PGO**: AOSP/CLO Clang with `-O2`, thin/none LTO (profile sets `lto: none` so AutoFDO runs on 6.12), AutoFDO profile-guided optimization, and MLGO.
+- **Networking & FS**: BBRv3 (`CONFIG_TCP_CONG_BBR3`), `TTL`/`HL` target, `IP_SET` + IPv6 NAT, and case-insensitive Unicode fixes.
+- **Security**: `CONFIG_LIST_HARDENED=y` plus five 6.12 backports (`CVE-2026-99103`, `CVE-2026-99136`, `CVE-2026-99138`, `CVE-2026-99139`, `CVE-2026-99167`).
+- **Bootloader spoof**: Baseband Guard stays off (`bbg: false`), so [EFISP/bootloader-spoof](https://xdaforums.com/t/efisp-root-gbl-chainload-efisp-chainloader-for-oneplus-15.4786301/) chains work.
+
+## Release & Filename Naming Decoder
+
+Releases and ZIP archives encode the exact build configuration directly in the filename:
+
+```text
+Tag:  v6.12.69-OP15-COS17-SUSFS2.3.0-KSUB-r1
+ZIP:  OP15-COS17_SM8850_6.12.69-A16_KSU34692B-SUSFS230_BORE-ADIOS-DAMON-KASANhw_CL20-O2-LTOn-AFDO-MLGO_BBR3-TTL-IPSET-UNI-NoBBG_r1.zip
+Info: OP15-COS17_SM8850_6.12.69-A16_KSU34692B-SUSFS230_BORE-ADIOS-DAMON-KASANhw_CL20-O2-LTOn-AFDO-MLGO_BBR3-TTL-IPSET-UNI-NoBBG_r1_build-info.json
+```
+
+| Segment | Example Token | Meaning |
+|---|---|---|
+| Target & SoC | `OP15-COS17_SM8850` | Device profile (`OP15-COS17`) and Qualcomm SoC (`SM8850`) |
+| Kernel & OS | `6.12.69-A16` | Full GKI kernel version and Android target (`A16`) |
+| KSU & Mode | `KSU34692B` / `KSU34692L` | SukiSU-Ultra revision + integration mode (`B` = builtin, `L` = LKM) |
+| SUSFS | `SUSFS230` | Compiled SUSFS version (`v2.3.0` -> `230`) |
+| Subsystems | `BORE-ADIOS-DAMON-KASANhw` | Active schedulers/MM (`KASANhw` = `KASAN_HW_TAGS` ABI parity, `NoKASAN` = disabled) |
+| Toolchain | `CL20-O2-LTOn-AFDO-MLGO` | Clang major (`CL20`), opt level (`O2`/`O3`), LTO (`LTOn`/`LTOt`/`LTOf`), AutoFDO, MLGO |
+| Net & Guard | `BBR3-TTL-IPSET-UNI-NoBBG` | TCP congestion control (`BBR3`/`BBR`), netfilter extras, Unicode fix, BBG state (`NoBBG` / `BBG`) |
+| Revision | `_r1` / `_b123` | Release revision (`-r1` tag) or CI run fallback (`_b<run_number>`) |
+
+## Key Engineering Fixes for OnePlus 15 ColorOS 17
+
+Two GKI 6.12 constraints broke earlier ColorOS 17 boots on `SM8850`:
+
+1. **Vendor Module `KASAN_HW_TAGS` ABI Parity (`kasan: true`)**: ColorOS 17 stock vendor kernel modules (`vendor_boot` / `vendor_dlkm`) reference `kasan_flag_enabled`. Disabling `CONFIG_KASAN_HW_TAGS` drops that symbol, causing early init module loading to fail and trigger an immediate splash bootloop. Keeping `CONFIG_KASAN_HW_TAGS=y` restores symbol parity while the bootloader keeps `kasan=off` at runtime.
+2. **Builtin LSM Hook Registration (`MAX_LSM_COUNT`)**: GKI `android16-6.12` ships `CONFIG_SECURITY` with stock hooks already filling the default 4 static LSM slots (`capability`, `landlock`, `safesetid`, `selinux`, `bpf`). Building SukiSU-Ultra in-tree requires expanding `CONFIG_MAX_LSM_COUNT` so `ksu` registers cleanly into `/sys/kernel/security/lsm`.
+
+## Flashing
+
+> [!IMPORTANT]
+> Back up stock `boot` and `init_boot` before flashing. If you are moving from an LKM-patched `init_boot` to this **Builtin** kernel, restore stock `init_boot` (or uninstall LKM in SukiSU Manager) so LKM and builtin hooks do not fight over `boot`.
+
+1. Verify your downloaded ZIP against its published SHA-256 (`sha256sum <file>.zip`).
+2. Flash via Kernel Flasher / Horizon Kernel Flasher (or unpack `Image` from the ZIP and repack/flash your `boot` slot for your ColorOS 17 build).
+3. Install the [SukiSU-Ultra Manager](https://github.com/SukiSU-Ultra/SukiSU-Ultra/releases).
+
+## Repository Layout
+
+| Path | Role |
 |---|---|
-| Profile | [`configs/a16/OP15-COS17.json`](configs/a16/OP15-COS17.json) |
-| Manifest | [`manifests/a16/oneplus_15_6.12.69_gki_w.xml`](manifests/a16/oneplus_15_6.12.69_gki_w.xml) |
-| Kernel base | AOSP GKI `6.12.69-android16-6` (`242e1a07f878`) |
-| Uname suffix | `6-g242e1a07f878-ab15865446-4k` |
-| Root | SukiSU-Ultra (`builtin` in-tree) |
-| SUSFS | `c6788e2a21dc717beb7dd3a36b729b58bc909927` (v2.3.0) |
+| [`configs/a16/OP15-COS17.json`](configs/a16/OP15-COS17.json) | Device profile & feature toggles validated against [`configs/schema.json`](configs/schema.json) |
+| [`manifests/a16/oneplus_15_6.12.69_gki_w.xml`](manifests/a16/oneplus_15_6.12.69_gki_w.xml) | Pinned GKI `6.12.69` + `SM8850` source/toolchain manifest |
+| [`.github/actions/build-kernel/`](.github/actions/build-kernel/action.yml) | Modular kernel build, binary ABI verification, and AnyKernel3 packaging action |
+| [`.github/workflows/build-kernel-release.yml`](.github/workflows/build-kernel-release.yml) | Manual dispatch build & GitHub Release workflow |
+| [`.github/workflows/ci-checks.yml`](.github/workflows/ci-checks.yml) | PR/push static validation, patch dry-runs, and `checkpatch.pl` |
+| [`docs/`](docs/README.md) | Kernel improvement plan, roadmap, and changelog |
 
-## Included features
-
-- **SukiSU-Ultra (`builtin`)**: Compiled in-tree with full SUSFS kernel hooks.
-- **SUSFS**: Magic mount, `SUS_PATH`, `SUS_MOUNT`, `SUS_KSTAT`, `SUS_MAP`, uname and cmdline spoofing, and open redirect. On `6.12.69` (`show_smaps_rollup` refactor), two `fs/proc/task_mmu.c` hunks are applied via [`susfs-fix-task_mmu-sus-map-gki-6.12.patch`](.github/actions/build-kernel/patches/susfs-fix-task_mmu-sus-map-gki-6.12.patch).
-- **Schedulers & I/O**: BORE (`SCHED_BORE`), ADIOS (`MQ_IOSCHED_ADIOS`), and DAMON (`DAMON_RECLAIM`, `DAMON_LRU_SORT`).
-- **Compiler optimizations**: Clang AutoFDO (`android16-6.12` profile verified by SHA256) and MLGO register allocation (`+mlgo`), with LTO `none` matching stock GKI.
-- **Security & hardening**: Five Linux 6.12 CVE backports (CVE-2026-99103, CVE-2026-99136, CVE-2026-99138, CVE-2026-99139, CVE-2026-99167), plus `LIST_HARDENED` and KASAN (`KASAN_HW_TAGS`) ABI parity with stock.
-- **Network & filesystem**: BBR/BBRv3, TTL target, IP set with `/proc/config.gz` hiding, Unicode bypass fix, and zstd EROFS support.
-- **Baseband Guard**: Kept off so EFISP bootloader spoofing continues to work.
-
-## Building
-
-1. Open **Actions -> Build and Release OnePlus 15 (ColorOS 17) Kernel**.
-2. Trigger **Run workflow** with `op_model: OP15-COS17`.
-3. Download the flashable AnyKernel3 zip and `build-info.json` from the workflow artifacts or release.
-
-### Known-unbuildable profiles
-
-None. Every profile in `configs/` applies cleanly against its pinned base.
-
-## Local checks
+## Local Verification
 
 ```sh
 python3 scripts/validate-configs.py
 ./scripts/check-patches.sh configs/a16/OP15-COS17.json
+python3 -m py_compile scripts/*.py
+shellcheck -s bash scripts/*.sh
 ```
-
-See [`docs/README.md`](docs/README.md) for the changelog, roadmap, and ported improvements.

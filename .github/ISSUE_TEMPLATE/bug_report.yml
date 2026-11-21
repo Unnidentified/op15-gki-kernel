@@ -53,9 +53,9 @@ body:
     attributes:
       label: Manager Type
       options:
-        - SukiSU-Ultra
+        - SukiSU-Ultra (Builtin)
+        - SukiSU-Ultra (LKM)
         - KernelSU
-        - pershoot KSUN
     validations:
       required: true
 
@@ -64,7 +64,7 @@ body:
     attributes:
       label: Manager Version
       description: Manager Version shown in the manager app.
-      placeholder: "e.g. v3.2.0 (33129)"
+      placeholder: "e.g. v3.2.0 (34692)"
     validations:
       required: true
 
@@ -72,8 +72,8 @@ body:
     id: driver_version
     attributes:
       label: Kernel Driver Version
-      description: Driver version shown in the manager app (under GKI2).
-      placeholder: "e.g. 33129"
+      description: Driver version shown in the manager app (and output of `cat /sys/kernel/security/lsm`).
+      placeholder: "e.g. 34692"
     validations:
       required: true
 
