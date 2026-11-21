@@ -1,37 +1,40 @@
-# Kernel improvements carried over from the reference tree
+# Kernel Improvements (`OP15-COS17` · `android16-6.12.69`)
 
-Notes on the security backports and kernel config symbols ported from [travismills82/oneplus15-sm8850-oos-kernel](https://github.com/travismills82/oneplus15-sm8850-oos-kernel) onto the pinned AOSP `6.12.69` base (`242e1a07f878`).
+Every toggle listed here is driven from [`configs/a16/OP15-COS17.json`](../configs/a16/OP15-COS17.json) and applied inside [`.github/actions/build-kernel/action.yml`](../.github/actions/build-kernel/action.yml).
 
-## Carried over: five CVE backports
+## Compiler & Optimization
 
-Applied unconditionally during every build:
-
-| CVE | Upstream commit | Subject |
+| Toggle | Setting | Purpose |
 |---|---|---|
-| CVE-2026-99103 | `cf9c8aaea0d47410df8708bec195889f3a85cd3c` | workqueue: fix unbound pool lifetime for pending pwqs |
-| CVE-2026-99136 | `148845aa1921d95ef5dc851c76e6a284f6657df6` | dm-crypt: fix a tiny race condition in crypt_dec_pending |
-| CVE-2026-99138 | `385e474086c2e7e29e2dded690be40dc273e20ee` | tcp: fix use-after-free in do_tcp_getsockopt(TCP_CC_INFO) |
-| CVE-2026-99139 | `5271b79b7ad68dcb222e893773f92bdabf7750f3` | tcp: fix use-after-free in do_tcp_getsockopt(TCP_CONGESTION) |
-| CVE-2026-99167 | `7b16eb911091aae237a8673da94e4dfb9cd21d54` | net/sched: fix use-after-free in __tcf_action_put() |
+| `autofdo` | `true` | Applies AOSP AutoFDO profile (`CONFIG_AUTOFDO_CLANG=y`) for kernel hot-path optimization |
+| `mlgo` | `true` | Enables Clang ML-guided inlining/register allocation flags |
+| `lto` | `none` | Kept at `none` so AutoFDO builds cleanly on `android16-6.12` |
+| `optimize_level` | `O2` (default) | `-O2` (supports `-O3` via workflow input) |
 
-Four apply unmodified to `6.12.69`. The workqueue patch keeps the existing `WQ_UNBOUND` check already present in `6.12.69` rather than pulling in `is_percpu_pool()` from later stable kernels, while preserving the exact lifetime fix.
+## CPU Scheduler, I/O & Memory
 
-## Carried over: config symbols
+| Toggle | Setting | Purpose |
+|---|---|---|
+| `bore` | `true` | Burst-Oriented Response Enhancer (`sched_bore=1`) for interactive foreground latency |
+| `adios` | `true` | Adaptive Deadline I/O Scheduler (`[adios]` default) |
+| `damon` | `true` | Kernel Data Access Monitor (`CONFIG_DAMON*`) for proactive memory reclamation |
+| `kasan` | `true` | Keeps `CONFIG_KASAN_HW_TAGS=y` so `kasan_flag_enabled` resolves for stock vendor modules while bootloader sets `kasan=off` |
 
-Appended to `gki_defconfig` alongside KSU, SUSFS, DAMON, and ADIOS:
+## Networking, Filesystem & Security
 
-| Symbol | Why |
-|---|---|
-| `CONFIG_EROFS_FS_ZIP_ZSTD=y` | Mount zstd-compressed EROFS system partitions. |
-| `CONFIG_PSTORE_BLK=m` | Persist panic and oops logs to block storage across reboots. |
-| `CONFIG_CRYPTO_AES_ARM64_NEON_BLK=m` | NEON-accelerated AES block modes for dm-crypt and fscrypt. |
-| `CONFIG_HARDLOCKUP_DETECTOR=y` | Detect CPUs that stop taking interrupts. |
-| `CONFIG_HARDLOCKUP_DETECTOR_PREFER_BUDDY=y` | Use the buddy hardlockup detector without requiring a PMU counter. |
-| `CONFIG_NINTENDO_FF=y` | Switch controller rumble support. |
-| `CONFIG_WQ_POWER_EFFICIENT_DEFAULT=y` | Match OnePlus power-efficient workqueue default. |
+| Toggle | Setting | Purpose |
+|---|---|---|
+| `bbr` / `bbr3` | `true` / `true` | Enables TCP BBR + BBRv3 congestion control (`CONFIG_TCP_CONG_BBR3`) |
+| `ttl` | `true` | Netfilter `TTL` / `HL` mangling targets |
+| `ip_set` | `true` | `IP_SET` + IPv6 NAT netfilter support |
+| `unicode` | `true` | Upstream case-insensitive / Unicode path handling fixes |
+| `bbg` | `false` | Keeps Baseband Guard disabled so EFISP chainloading works |
+| Built-in hardening | always on | `CONFIG_LIST_HARDENED=y` plus `CVE-2026-99103`, `99136`, `99138`, `99139`, `99167` backports |
 
-## Verifying
+## Verification Gate on Built `Image`
 
-```sh
-./scripts/check-patches.sh configs/a16/OP15-COS17.json
-```
+Before creating the AnyKernel3 package, `build-kernel/action.yml` checks the compiled `Image` binary for:
+
+1. Exported symbol string `kasan_flag_enabled` (when `kasan: true`).
+2. Builtin KernelSU `LSM hooks initialized.` string (when `ksu_mode: builtin`).
+3. `susfs is initialized!` string (when `susfs: true`).

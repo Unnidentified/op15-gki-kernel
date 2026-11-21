@@ -133,7 +133,7 @@ if [ "$susfs" = "true" ]; then
   # Mirrors the androidXX_susfs_branch_or_commit input defaults in
   # build-kernel-release.yml. Keep the two in sync.
   case "${android}-${kernel}" in
-    android16-6.12) default_susfs_ref="acb92d4abc922cac384a207744b2db40281a7c7f" ;;
+    android16-6.12) default_susfs_ref="c6788e2a21dc717beb7dd3a36b729b58bc909927" ;;
     *)              default_susfs_ref="" ;;
   esac
   susfs_ref="${susfs_pin:-${default_susfs_ref:-$susfs_branch}}"

@@ -3067,6 +3067,28 @@ runs:
         KERNEL_UNAME=$(strings "$IMG" | grep -E 'Linux version.*#' | tail -n1)
         echo "Kernel Uname: $KERNEL_UNAME"
         echo "KERNEL_UNAME=$KERNEL_UNAME" >> "$GITHUB_ENV"
+
+        # Binary ABI & boot-invariant verification on the final Image
+        python3 - "$IMG" "${OP_KASAN:-false}" "${KSUMODE:-lkm}" "${OP_SUSFS:-false}" "${OP_KERNEL_VERSION:-6.12}" <<'PY'
+        import re, sys
+        img_path, kasan, ksumode, susfs, kver = sys.argv[1:6]
+        data = open(img_path, "rb").read()
+        if kasan == "true":
+            if b"\x00kasan_flag_enabled\x00" not in data:
+                print("::error::kasan_flag_enabled export missing from Image (vendor_boot/vendor_dlkm modules would fail to load)", file=sys.stderr)
+                sys.exit(1)
+            print(" Verified: kasan_flag_enabled present in Image")
+        if ksumode != "lkm" and kver == "6.12":
+            if b"LSM hooks initialized." not in data:
+                print("::error::KernelSU builtin LSM hook init string missing from Image", file=sys.stderr)
+                sys.exit(1)
+            print(" Verified: builtin KernelSU LSM hook init present in Image")
+        if susfs == "true":
+            if b"susfs is initialized!" not in data:
+                print("::error::SUSFS init string missing from Image", file=sys.stderr)
+                sys.exit(1)
+            print(" Verified: SUSFS init present in Image")
+        PY
         
         printf 'warnings_count=%s\n' "$WARNINGS_COUNT" >> "$GITHUB_OUTPUT"
         printf 'image_sha256=%s\n' "$IMG_SHA256" >> "$GITHUB_OUTPUT"
@@ -3157,29 +3179,68 @@ runs:
         fi
         
         ZIP_MODEL=$(echo "$OP_MODEL" | sed 's/-[0-9]\+\.[0-9]\+\.[0-9]\+$//')
-        # Carry the release revision into the file name, so the artifact and the
-        # release asset are the same string. v2.3.0-r3 -> -r3. A tag without a
-        # revision (v2.3.0) or no tag at all leaves the name unsuffixed.
+        SOC_TAG=$(printf '%s' "${OP_BRANCH##*/}" | tr '[:lower:]' '[:upper:]')
+        KSU_MODE_CHAR=$([ "${KSUMODE:-lkm}" = "lkm" ] && echo "L" || echo "B")
+        KSU_NUM=$(printf '%s' "${KSUVER:-0}" | sed 's/[^0-9A-Za-z.]//g')
+        [ -n "$KSU_NUM" ] || KSU_NUM="0"
+
+        SUSFS_TOKEN=""
+        if [ "${{ env.OP_SUSFS }}" = true ]; then
+          sus_compact=$(printf '%s' "${SUSVER:-0}" | sed 's/^v//; s/\.//g')
+          SUSFS_TOKEN="-SUSFS${sus_compact}"
+        fi
+
+        subsys_parts=()
+        [ "${OP_BORE:-false}" = "true" ] && subsys_parts+=("BORE")
+        [ "${OP_ADIOS:-false}" = "true" ] && subsys_parts+=("ADIOS")
+        [ "${OP_HMBIRD:-false}" = "true" ] && subsys_parts+=("HMBIRD")
+        [ "${OP_DAMON:-false}" = "true" ] && subsys_parts+=("DAMON")
+        [ "${OP_KASAN:-false}" = "true" ] && subsys_parts+=("KASANhw") || subsys_parts+=("NoKASAN")
+        SUBSYS_TAG=$(IFS=-; echo "${subsys_parts[*]}")
+
+        cl_major=$(printf '%s' "${CLANG_VERSION:-}" | sed -n 's/.*clang version \([0-9]\+\).*/\1/p')
+        [ -n "$cl_major" ] || cl_major="X"
+        case "${EFFECTIVE_LTO:-${OP_LTO:-none}}" in
+          none) lto_code="LTOn" ;;
+          thin) lto_code="LTOt" ;;
+          full) lto_code="LTOf" ;;
+          *) lto_code="LTOx" ;;
+        esac
+        cc_parts=("CL${cl_major}" "${{ inputs.optimize_level }}" "${lto_code}")
+        [ "${OP_AUTOFDO:-false}" = "true" ] && cc_parts+=("AFDO")
+        [ "${OP_MLGO:-false}" = "true" ] && cc_parts+=("MLGO")
+        TOOLCHAIN_TAG=$(IFS=-; echo "${cc_parts[*]}")
+
+        net_parts=()
+        if [ "${OP_BBR3:-false}" = "true" ]; then
+          net_parts+=("BBR3")
+        elif [ "${OP_BBR:-false}" = "true" ]; then
+          net_parts+=("BBR")
+        fi
+        [ "${OP_TTL:-false}" = "true" ] && net_parts+=("TTL")
+        [ "${OP_IP_SET:-false}" = "true" ] && net_parts+=("IPSET")
+        [ "${OP_UNICODE:-false}" = "true" ] && net_parts+=("UNI")
+        [ "${OP_OPT:-false}" = "true" ] && net_parts+=("OPT")
+        [ "${OP_DS:-false}" = "true" ] && net_parts+=("DS")
+        [ "${OP_NTSYNC:-false}" = "true" ] && net_parts+=("NTS")
+        [ "${OP_BBG:-false}" = "true" ] && net_parts+=("BBG") || net_parts+=("NoBBG")
+        NET_TAG=$(IFS=-; echo "${net_parts[*]}")
+
+        FEATURE_TAG="${SUBSYS_TAG}_${TOOLCHAIN_TAG}_${NET_TAG}"
+
         ZIP_REV=""
         if [ -n "${OP_RELEASE_TAG:-}" ]; then
           rev="${OP_RELEASE_TAG##*-r}"
           if [ "$rev" != "$OP_RELEASE_TAG" ] && [[ "$rev" =~ ^[0-9]+$ ]]; then
-            ZIP_REV="-r$rev"
+            ZIP_REV="_r$rev"
           fi
         fi
-        if [ "${KSUMODE:-lkm}" = "lkm" ]; then
-          if [ "${{ env.OP_SUSFS }}" = true ]; then
-            ZIP_NAME="${ZIP_MODEL}_${KERNEL_FULL_VER}-SuSFS_${SUSVER:-unknown}${ZIP_REV}_LKM.zip"
-          else
-            ZIP_NAME="${ZIP_MODEL}_${KERNEL_FULL_VER}${ZIP_REV}_LKM.zip"
-          fi
-        else
-          if [ "${{ env.OP_SUSFS }}" = true ]; then
-            ZIP_NAME="${ZIP_MODEL}_${KERNEL_FULL_VER}-SuSFS_${SUSVER:-unknown}${ZIP_REV}.zip"
-          else
-            ZIP_NAME="${ZIP_MODEL}_${KERNEL_FULL_VER}${ZIP_REV}.zip"
-          fi
-        fi
+        [ -n "$ZIP_REV" ] || ZIP_REV="_b${GITHUB_RUN_NUMBER:-0}"
+
+        ZIP_BASE="${ZIP_MODEL}_${SOC_TAG}_${TKERNEL_VER}-${OP_OS_VERSION}_KSU${KSU_NUM}${KSU_MODE_CHAR}${SUSFS_TOKEN}_${FEATURE_TAG}${ZIP_REV}"
+        ZIP_NAME="${ZIP_BASE}.zip"
+        echo "FEATURE_TAG=$FEATURE_TAG" >> "$GITHUB_ENV"
+        echo "ZIP_BASE=$ZIP_BASE" >> "$GITHUB_ENV"
         mkdir -p "$ARTIFACTS_FOLDER"
         
         echo "Creating flashable ZIP: $ZIP_NAME"
@@ -3257,7 +3318,7 @@ runs:
         set -euo pipefail
         echo "::group::Write build info"
         WRITER="${{ github.action_path }}/../../../scripts/build-info.py"
-        OUT="$GITHUB_WORKSPACE/${OP_MODEL}_${OP_OS_VERSION}_build-info.json"
+        OUT="$GITHUB_WORKSPACE/${ZIP_BASE:-${OP_MODEL}_${OP_OS_VERSION}}_build-info.json"
 
         if [ ! -f "$WRITER" ]; then
           echo "::error::build-info writer not found at $WRITER"
@@ -3285,12 +3346,18 @@ runs:
           --ksu-commit "${KSU_COMMIT_SHA:-}" \
           --clang "${CLANG_VERSION:-}" \
           --lto "${EFFECTIVE_LTO:-${OP_LTO:-}}" \
+          --optimization "${{ inputs.optimize_level }}" \
           --autofdo "${OP_AUTOFDO:-false}" \
           --autofdo-profile-sha256 "${AFDO_SHA256:-}" \
           --damon "${OP_DAMON:-false}" \
           --bore "${OP_BORE:-false}" \
           --adios "${OP_ADIOS:-false}" \
           --mlgo "${OP_MLGO:-false}" \
+          --kasan "${OP_KASAN:-false}" \
+          --bbg "${OP_BBG:-false}" \
+          --bbr3 "${OP_BBR3:-false}" \
+          --feature-tag "${FEATURE_TAG:-}" \
+          --release-tag "${OP_RELEASE_TAG:-}" \
           --patchset-commit "${WILDKERNELS_COMMIT:-}" \
           --zip "$ARTIFACTS_FOLDER/$ZIP_NAME" \
           --run-id "$GITHUB_RUN_ID" \
@@ -3334,17 +3401,27 @@ runs:
           echo "Optimization: ${{ inputs.optimize_level }}"
           echo "Clean Build: ${{ inputs.clean }}"
           echo ""
-          echo "=== OnePlus Features ==="
+          echo "=== Kernel & Compiler Features ==="
+          echo "Feature Tag: ${FEATURE_TAG:-unknown}"
+          echo "BORE Scheduler: ${OP_BORE:-false}"
+          echo "ADIOS I/O: ${OP_ADIOS:-false}"
+          echo "DAMON: ${OP_DAMON:-false}"
+          echo "KASAN_HW_TAGS (ABI): ${OP_KASAN:-false}"
+          echo "LTO: ${EFFECTIVE_LTO:-${OP_LTO:-none}}"
+          echo "AutoFDO: ${OP_AUTOFDO:-false}"
+          echo "MLGO: ${OP_MLGO:-false}"
+          echo "Rust Binder: ${OP_RUST_BUILD:-false}"
           echo "Kernel Optimisations: ${{ env.OP_OPT }}"
           echo "BBR: ${{ env.OP_BBR }}"
           echo "BBRv3: ${{ env.OP_BBR3 }}"
-          echo "BBG: ${{ env.OP_BBG }}"
+          echo "BBG (EFISP compat when false): ${{ env.OP_BBG }}"
           echo "HMBIRD SCX: ${{ env.OP_HMBIRD }}"
           echo "TTL: ${{ env.OP_TTL }}"
           echo "IP_SET & IPv6 NAT: ${{ env.OP_IP_SET }}"
           echo "Unicode Fix: ${{ env.OP_UNICODE }}"
           echo "NTSync: ${{ env.OP_NTSYNC }}"
           echo "Droidspaces: ${{ env.OP_DS }}"
+          echo "CVE Backports: 5 (6.12.69)"
           echo ""
           echo "Image SHA256: ${{ steps.collect_stats.outputs.image_sha256 }}"
           echo "AnyKernel3 ZIP SHA256: ${{ steps.create_zip.outputs.zip_sha256 }}"
@@ -3399,20 +3476,26 @@ runs:
           fi
           
           echo ""
-          echo "### OnePlus Features"
+          echo "### Kernel Subsystems & Features"
           echo ""
-          echo "| Feature | Status |"
+          echo "| Subsystem / Feature | Value |"
           echo "|---------|--------|"
-          echo "| **Kernel Optimisations** | ${{ env.OP_OPT }} |"
-          echo "| **BBR** | ${{ env.OP_BBR }} |"
-          echo "| **BBRv3** | ${{ env.OP_BBR3 }} |"
-          echo "| **BBG** | ${{ env.OP_BBG }} |"
-          echo "| **HMBIRD SCX** | ${{ env.OP_HMBIRD }} |"
-          echo "| **TTL** | ${{ env.OP_TTL }} |"
+          echo "| **Feature Tag** | \`${FEATURE_TAG:-unknown}\` |"
+          echo "| **BORE Scheduler** | ${OP_BORE:-false} |"
+          echo "| **ADIOS I/O Scheduler** | ${OP_ADIOS:-false} |"
+          echo "| **DAMON Memory Monitor** | ${OP_DAMON:-false} |"
+          echo "| **KASAN_HW_TAGS (KMI ABI)** | ${OP_KASAN:-false} |"
+          echo "| **Effective LTO** | \`${EFFECTIVE_LTO:-${OP_LTO:-none}}\` |"
+          echo "| **AutoFDO** | ${OP_AUTOFDO:-false} |"
+          echo "| **MLGO** | ${OP_MLGO:-false} |"
+          echo "| **Rust Build** | ${OP_RUST_BUILD:-false} |"
+          echo "| **BBR / BBRv3** | ${{ env.OP_BBR }} / ${{ env.OP_BBR3 }} |"
+          echo "| **Baseband Guard** | ${{ env.OP_BBG }} (false preserves EFISP) |"
+          echo "| **TTL Target** | ${{ env.OP_TTL }} |"
           echo "| **IP_SET & IPv6 NAT** | ${{ env.OP_IP_SET }} |"
           echo "| **Unicode Fix** | ${{ env.OP_UNICODE }} |"
-          echo "| **NTSync** | ${{ env.OP_NTSYNC }} |"
-          echo "| **Droidspaces** | ${{ env.OP_DS }} |"
+          echo "| **CVE Backports** | 5 (CVE-2026-99103/136/138/139/167) |"
+          echo "| **LIST_HARDENED** | true |"
           
           echo ""
           echo "### Build Metrics"
@@ -3476,7 +3559,7 @@ runs:
       if: ${{ always() && steps.build_info.conclusion == 'success' }}
       uses: actions/upload-artifact@v7
       with:
-        name: ${{ env.OP_MODEL }}_${{ env.OP_OS_VERSION }}_build_info
+        name: ${{ env.ZIP_BASE || format('{0}_{1}', env.OP_MODEL, env.OP_OS_VERSION) }}_build_info
         path: ${{ steps.build_info.outputs.build_info_path }}
         archive: false
         retention-days: 90

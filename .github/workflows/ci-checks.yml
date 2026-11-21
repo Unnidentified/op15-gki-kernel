@@ -30,10 +30,7 @@ jobs:
       - name: Matrix generation smoke test
         run: |
           set -euo pipefail
-          # Mirrors the matrix build in build-kernel-release.yml. A JSON file
-          # under configs/ without a string "model" makes the device filter
-          # abort with "startswith() requires string inputs" - which is how
-          # configs/schema.json took down every device-specific build.
+          # Mirrors the matrix build in build-kernel-release.yml.
           echo "[" > /tmp/matrix.json
           mapfile -t files < <(find configs/ -mindepth 2 -name "*.json" -print0 | xargs -0 -n1)
           for i in "${!files[@]}"; do
@@ -212,17 +209,9 @@ jobs:
           sys.exit(1 if failed else 0)
           PY
 
-      - name: build-info smoke test
+      - name: build-info & KMI checker smoke test
         run: |
-          # The writer derives the kernel source commit from the manifest, which
-          # is the only authoritative record of it. Assert it resolves for every
-          # manifest we ship, so a manifest rename cannot silently blank out
-          # build provenance.
           set -euo pipefail
-          # Manifests live one directory deep (manifests/<os>/<name>.xml). Keep
-          # the top-level glob too in case one is ever added, but nullglob so an
-          # unmatched pattern is skipped instead of being passed through
-          # literally.
           shopt -s nullglob
           printf 'payload' > /tmp/fake.zip
           count=0
@@ -230,14 +219,70 @@ jobs:
             python3 scripts/build-info.py \
               --out /tmp/build-info.json \
               --manifest "$manifest" \
-              --model OP-TEST --os-version A16 \
+              --model OP15-COS17 --os-version A16 \
               --android-version android16 --kernel-version 6.12 \
+              --kernel-full-version android16-6.12.69 \
+              --optimization O2 --lto none \
+              --kasan true --bbg false --bbr3 true \
+              --autofdo true --mlgo true --bore true --adios true --damon true \
+              --feature-tag BORE-ADIOS-DAMON-KASANhw_CL20-O2-LTOn-AFDO-MLGO_BBR3-NoBBG \
+              --release-tag v6.12.69-OP15-COS17-SUSFS2.3.0-KSUB-r1 \
               --zip /tmp/fake.zip > /dev/null
-            python3 -c 'import json,sys; k=json.load(open("/tmp/build-info.json"))["kernel"]; sys.exit(0 if k["source_url"] and k["source_ref"] else 1)' \
-              || { echo "::error::$manifest: kernel source did not resolve"; exit 1; }
+            python3 - <<'PY'
+          import json
+          data = json.load(open("/tmp/build-info.json"))
+          assert data["schema"] == 2, f"unexpected schema {data.get('schema')}"
+          k = data["kernel"]
+          assert k["source_url"] and k["source_ref"], "kernel source did not resolve"
+          f = data["features"]
+          for key in ("kasan_hw_tags", "bbg", "bbr3", "bore", "adios", "damon", "autofdo", "mlgo", "lto", "optimization", "feature_tag"):
+              assert key in f, f"missing feature key: {key}"
+          assert data["artifact"]["release_tag"] == "v6.12.69-OP15-COS17-SUSFS2.3.0-KSUB-r1"
+          PY
             count=$((count + 1))
           done
-          echo "build-info resolved a kernel source for $count manifest(s)"
+          echo "build-info v2 resolved kernel source and feature flags for $count manifest(s)"
+          python3 scripts/kmi-check.py --help > /dev/null
+
+      - name: Patch hygiene & OP15-COS17 policy gate
+        run: |
+          python3 - <<'PY'
+          import json, pathlib, re, sys
+
+          failed = False
+          patch_files = sorted(pathlib.Path(".github/actions/build-kernel/patches").rglob("*.patch"))
+          if not patch_files:
+              print("::error::No .patch files found under .github/actions/build-kernel/patches")
+              sys.exit(1)
+
+          for p in patch_files:
+              text = p.read_text(encoding="utf-8", errors="replace")
+              if not text.strip():
+                  print(f"::error::{p}: patch file is empty")
+                  failed = True
+              if ("diff --git " not in text) and ("--- " not in text or "+++ " not in text):
+                  print(f"::error::{p}: missing unified diff header")
+                  failed = True
+
+          cfg = json.load(open("configs/a16/OP15-COS17.json", encoding="utf-8"))
+          if cfg.get("kasan") is not True:
+              print("::error::OP15-COS17.json must keep kasan=true to export kasan_flag_enabled for stock ColorOS 17 vendor modules")
+              failed = True
+          if cfg.get("bbg") is not False:
+              print("::error::OP15-COS17.json must keep bbg=false for EFISP chainloader compatibility")
+              failed = True
+          susfs_hash = cfg.get("susfs_hash", "")
+          if not re.fullmatch(r"[0-9a-f]{40}", susfs_hash):
+              print(f"::error::OP15-COS17.json susfs_hash '{susfs_hash}' is not a pinned 40-char SHA")
+              failed = True
+          manifest = pathlib.Path("manifests") / cfg["os_version"].lower() / cfg["manifest"]
+          if not manifest.is_file():
+              print(f"::error::OP15-COS17 manifest not found at {manifest}")
+              failed = True
+
+          print(f"Verified {len(patch_files)} patch files and OP15-COS17 policy invariants")
+          sys.exit(1 if failed else 0)
+          PY
 
   patch-check:
     name: Patch dry-run (${{ matrix.label }})
@@ -284,10 +329,7 @@ jobs:
           import glob, json
 
           # Mirrors the androidXX_susfs_branch_or_commit input defaults in
-          # build-kernel-release.yml. A key with a pinned default is something
-          # we control, so its canary blocks. A key whose default is a moving
-          # branch tip is upstream drift - worth reporting, not worth blocking
-          # an unrelated PR over.
+          # build-kernel-release.yml.
           PINNED_DEFAULT_KEYS = {"android16-6.12"}
 
           entries = []
