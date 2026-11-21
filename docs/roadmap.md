@@ -16,7 +16,7 @@ Completed baseline and next improvements for the `OP15-COS17` (`android16-6.12.6
 ## Near-Term Next Steps
 
 - [ ] Collect a device-specific ETM AutoFDO profile on ColorOS 17 `6.12.69` and pass it via `autofdo_profile_url` / `autofdo_profile_sha256` to measure gains against the bundled AOSP profile.
-- [ ] Keep `kmi_check_strict: false` (advisory report artifact) or add an allowlist for intentional SUSFS/Droidspaces struct layout CRCs before enabling strict gating.
+- [x] Baselined `out/Module.symvers` vs. `gki/aarch64/abi.stg` on `6.12.69` (`10,198` ABI symbols, `0` missing, `0` `task_struct` changes with `ds: true`, and `8` intentional `tcp_*` CRC shifts from `bbr3: true`: `tcp_done`, `tcp_poll`, `tcp_read_done`, `tcp_read_sock`, `tcp_recv_skb`, `tcp_sendmsg_locked`, `tcp_sock_set_cork`, `tcp_sock_set_nodelay`). Keep `kmi_check_strict: false` by default while `bbr3: true` is active.
 
 ## Evaluated & Rejected
 

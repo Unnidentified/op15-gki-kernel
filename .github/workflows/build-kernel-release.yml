@@ -818,7 +818,10 @@ jobs:
 
       - name: List Downloaded Artifacts
         run: |
-          rm -f ./downloaded-artifacts/ccache-binary.zip
+          rm -f ./downloaded-artifacts/ccache-binary.zip \
+                ./downloaded-artifacts/*_kmi_report.zip \
+                ./downloaded-artifacts/*_patch_rejects.zip \
+                ./downloaded-artifacts/debug_*.zip
           echo "=== Downloaded artifacts ==="
           if [ -d "./downloaded-artifacts" ]; then
             find ./downloaded-artifacts -type f | sort
