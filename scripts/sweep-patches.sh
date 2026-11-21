@@ -8,8 +8,8 @@
 # is the exhaustive version, meant for a schedule or a local run.
 #
 # Usage:
-#   scripts/sweep-patches.sh                             # every profile
-#   scripts/sweep-patches.sh configs/a16/OP15.json ...   # a subset
+#   scripts/sweep-patches.sh                                  # every profile
+#   scripts/sweep-patches.sh configs/a16/OP15-COS17.json ...  # a subset
 #
 # Env:
 #   JOBS  parallel workers (default 6)

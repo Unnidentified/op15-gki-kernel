@@ -8,7 +8,7 @@ authoritatively (the source is fetched as tarballs, not as a git clone).
 
 Usage:
     build-info.py --out build-info.json --manifest manifest.xml \
-        --model OP15 --os-version A16 ... --zip artifacts/OP15_....zip
+        --model OP15-COS17 --os-version A16 ... --zip artifacts/OP15-COS17_....zip
 """
 
 import argparse

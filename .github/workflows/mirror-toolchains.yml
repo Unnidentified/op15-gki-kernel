@@ -33,7 +33,7 @@ jobs:
           INPUT_BRANCH="${{ github.event.inputs.target_branch || inputs.target_branch }}"
           
           if [ "${{ github.event_name }}" == "schedule" ] || [ -z "$INPUT_BRANCH" ]; then
-            echo "branches=[\"main\", \"testing\", \"Beta-2\"]" >> "$GITHUB_OUTPUT"
+            echo "branches=[\"main\"]" >> "$GITHUB_OUTPUT"
           else
             echo "branches=[\"$INPUT_BRANCH\"]" >> "$GITHUB_OUTPUT"
           fi
@@ -109,16 +109,16 @@ jobs:
             cp -r configs/* all_branch_configs/ || true
           done
           
-          # Create the aggregated JSON
+          # Create the aggregated JSON (-mindepth 2 skips configs/schema.json)
           echo "[" > all_configs.json
-          mapfile -t files < <(find all_branch_configs/ -name "*.json")
+          mapfile -t files < <(find all_branch_configs/ -mindepth 2 -name "*.json")
           for i in "${!files[@]}"; do
             cat "${files[$i]}" >> all_configs.json
             [[ $((i+1)) -lt ${#files[@]} ]] && echo "," >> all_configs.json
           done
           echo "]" >> all_configs.json
-          
-          echo " Aggregated $(find all_branch_configs/ -name "*.json" | wc -l) configurations."
+
+          echo " Aggregated $(find all_branch_configs/ -mindepth 2 -name "*.json" | wc -l) configurations."
 
 
       - name: Resolve Unique Projects

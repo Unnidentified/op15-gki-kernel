@@ -143,10 +143,10 @@ jobs:
           MESSAGE=$(cat <<EOF
           <b>$EMOJI $STATUS</b>
 
-          <pre><code class="language-markdown">Kernel Name: OnePlus Kernels with SukiSU-Ultra & SUSFS
+          <pre><code class="language-markdown">Kernel Name: OnePlus 15 (ColorOS 17) Kernel with SukiSU-Ultra & SUSFS
           Version / Tag: $REL_TAG
           Title: $REL_NAME
-          Device: Any supported OnePlus device (Check GitHub for your device)
+          Device: OnePlus 15 (ColorOS 17 / android16-6.12.69)
 
           $FEATURES_BLOCK
 

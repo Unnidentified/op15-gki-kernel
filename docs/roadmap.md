@@ -1,150 +1,51 @@
 # Roadmap
 
-What is done, what was deliberately rejected, and what is still open. Every
-entry carries the evidence behind the decision, so a future reader can check it
-instead of trusting it.
+What shipped for OnePlus 15 ColorOS 17 (`OP15-COS17`), what was investigated and rejected, and what remains open.
 
-This kernel targets a **normal daily-driver phone**, not a benchmark build. That
-single constraint rejects most of the tuning advice floating around: anything
-that trades correctness, debuggability or battery for a synthetic score is out.
+This kernel targets a **daily-driver phone** rather than synthetic benchmarks, so changes that trade correctness, debuggability, or battery life for benchmark numbers stay out.
 
 ---
 
 ## Shipped
 
-| Area | What | PR |
-|---|---|---|
-| Correctness | `SUS_MAP` scope fix, per-device SUSFS pins, duplicated matrix block removed, fail-fast ref resolution | #30 |
-| Gates | Patch dry-run against the real base, config schema + validator, KMI/ABI check, actionlint + shellcheck in CI | #30 |
-| Provenance | `build-info.json` per build, per-zip sha256 in the release notes, upload guard | #30 |
-| Hygiene | Patch provenance headers, BORE slice decision documented, `battery_patches/` removed, build badge, failure notification | #33 |
-| Kernel | AutoFDO profile, DAMON, `LTO_NONE` symbol fix | #35 |
-| Kernel | BORE, ADIOS and AutoFDO on the OxygenOS 16 profile | #36 |
-| CI | `lto_override` repair, resolved-config feature audit | #37 |
-| Kernel | Reviewed `opt` allowlist, LTO settled, dead O3 symbol fixed | #38 |
-| Hardening | `LIST_HARDENED`, `RANDOM_KMALLOC_CACHES` on every 6.6+ profile | #39 |
-| CI | `configs/schema.json` excluded from matrix generation | #40 |
-| Kernel | BORE applied with `-F0`, both 6.12.23 hunks adapted | #41 |
-| Release | Zips named with the release revision | #42 |
-| Debug | KASAN off by default, `kasan` profile field, two build-time guards | #43 |
-| Gates | `check-patches.sh` reproduces the build's pre-patches; `sweep-patches.sh` checks every profile; `blocked` and `tested` profile fields; weekly sweep workflow | #45 |
+| Area | What |
+|---|---|
+| Base profile | `OP15-COS17` pinned to AOSP `kernel/common` `6.12.69` (`242e1a07f878`) matching ColorOS 17 stock KMI |
+| Correctness | `SUS_MAP` `task_mmu.c` scope fix (loop head and lock-retry path), KASAN off by default |
+| Features | SukiSU-Ultra (`builtin`), SUSFS v2.3.0, BORE, ADIOS, DAMON, AutoFDO, MLGO, BBR/BBRv3 |
+| Security | Five 6.12 CVE backports, `LIST_HARDENED`, `RANDOM_KMALLOC_CACHES` |
+| Gates & provenance | Config schema validation, `check-patches.sh` dry-run, KMI/ABI check, `build-info.json`, actionlint + shellcheck |
 
 ---
 
 ## Decided against
 
-These were investigated and rejected. The reasoning is the useful part; do not
-re-litigate without new evidence.
-
 | Candidate | Why not |
 |---|---|
-| **LTO on 6.12** | Google's Kleaf docs say LTO is disabled by default on GKI from android14-6.1 up and "should only be modified when the trade-offs are fully understood". `gki_defconfig` has no LTO line, so `LTO_NONE` applies. The 151 profiles using `thin` are the deviation, not the 8 using `none`. `lto_override` exists for one-off experiments |
-| **`-O3` as default** | `CC_OPTIMIZE_FOR_PERFORMANCE_O3` was removed in Linux 6.0, so on 6.1+ the symbol is a no-op and only `KCFLAGS_EXTRA="-O3"` reaches the compiler. It is blind: it unrolls and inlines on heuristics, growing kernel text and hurting i-cache. AutoFDO and LTO do the same transforms guided by profile data |
-| **`CONFIG_INIT_ON_FREE_DEFAULT_ON`** | `INIT_ON_ALLOC_DEFAULT_ON` is already on and covers the main info-leak path. This doubles the zeroing for a smaller marginal gain |
-| **`CONFIG_ARM64_MTE`** | Needs hardware support and a userspace that tolerates tag checks. Enabling it blind crashes things |
-| **16 KB page size** | Not a toggle. Changing it breaks every existing binary on the device |
-| **`CONFIG_SCHEDSTATS=n`** | Gates the `sched_stat_*` tracepoints (`kernel/sched/build_utility.c:74`). Perfetto's `sched_blocked_reason` needs them |
-| **`ZSWAP`** | No swap device on these phones |
-| **`NO_HZ_FULL` / `CPU_ISOLATION`** | Needs `isolcpus`, which no Android userspace sets |
-| **`DEFERRED_STRUCT_PAGE_INIT`** | Only pays off on very large memory with a long boot; adds a second init pass |
-| **`PAGE_REPORTING`** | Hypervisor feature, not applicable |
-| **`THP_ALWAYS`** | `THP_MADVISE` plus `THP_SWAP` is the right default; always-on THP costs memory and latency on a phone |
-| **`HZ_300`** | No upstream user; `HZ=250` is what GKI ships |
-| **`PREEMPT_DYNAMIC`** | Adds a static call on every preempt point for a runtime switch nothing flips |
-| **`SCHED_THERMAL_PRESSURE`** | Removed in 6.12 |
-| **`opt` patches outside the allowlist** | Each one is listed with its reason in the [README](../README.md#optimisation-patches-opt). The short version: they either compile to nothing on arm64, hide real errors, or trade data safety for a number |
+| **LTO `thin` / `full` on 6.12** | Google's Kleaf defaults disable LTO on android14-6.1+ (`LTO_NONE`). `lto_override` exists for explicit one-off tests |
+| **`-O3` default** | `CC_OPTIMIZE_FOR_PERFORMANCE_O3` was removed in Linux 6.0; blind `-O3` grows text and hurts i-cache while AutoFDO already guides inlining |
+| **`CONFIG_INIT_ON_FREE_DEFAULT_ON`** | `INIT_ON_ALLOC_DEFAULT_ON` covers the main info-leak path; zeroing again on free doubles the cost |
+| **`CONFIG_ARM64_MTE`** | Requires compatible userspace; enabling it unconditionally causes crashes |
+| **16 KB page size** | Breaks existing binaries compiled for 4 KB pages |
+| **`CONFIG_SCHEDSTATS=n`** | Disables `sched_stat_*` tracepoints needed by Perfetto |
+| **`ZSWAP`** | No swap device configured |
+| **`NO_HZ_FULL` / `CPU_ISOLATION`** | Unused without `isolcpus` on Android |
+| **`DEFERRED_STRUCT_PAGE_INIT`** | Extra init pass aimed at servers with large memory |
+| **`PAGE_REPORTING`** | Hypervisor guest feature |
+| **`THP_ALWAYS`** | `THP_MADVISE` + `THP_SWAP` avoids memory and latency overhead |
+| **`HZ_300`** | Stock GKI uses `HZ=250` |
+| **`PREEMPT_DYNAMIC`** | Adds static-call overhead on every preempt point |
+| **`SCHED_THERMAL_PRESSURE`** | Removed in Linux 6.12 |
 
 ---
 
-## Blocked upstream
-
-### SUSFS patch drift on android14-6.1 and android13-5.15
-
-Resolved. All 159 profiles apply their patch sequence cleanly.
-
-The `susfs4ksu` branches for both KMIs were rebased onto newer kernels, so their
-`50_add_susfs` patches stopped matching the OnePlus trees the profiles pin. The
-mismatch was context, not functionality:
-
-| KMI | File | Why it rejected | Fix |
-|---|---|---|---|
-| `android14-6.1` | `fs/namespace.c` | the hunk expects `#include <trace/hooks/blk.h>`; the tree ships `include/trace/hooks/fs.h` | `susfs-fix-namespace-headers-gki-6.1.patch` |
-| `android13-5.15` | `fs/namespace.c` | the hunk expects `#include <trace/hooks/blk.h>`; the tree has no `include/trace/hooks/` | `susfs-fix-namespace-headers-gki-5.15.patch` |
-| `android13-5.15` | `fs/proc/task_mmu.c` | both `SUS_MAP` checks are already in the vendor tree | reject dropped after asserting the checks are present |
-
-The two adapted patches add exactly what the upstream hunk adds, against the
-context the vendor tree actually has, and are applied only when the original
-hunk rejected. The earlier note here claimed `fs/proc_namespace.c` failed
-outright as well; it does not, and has not since the pre-patches were ported
-into `check-patches.sh`.
-
-**Revisit when** a `susfs4ksu` commit lands whose patch applies to these bases
-without adaptation, at which point the two fixups become dead code and should
-be deleted. `scripts/sweep-patches.sh` re-derives the list, and the weekly
-`Patch Sweep` workflow reports when it changes.
+## Open items
 
 ### `CONFIG_SCHED_CLUSTER`
 
-Cluster-aware scheduling landed in 2021 and works on uniform topologies. On
-asymmetric ones it does not balance across clusters of equal-capacity CPUs that
-share an L2, which is exactly the shape of a modern phone SoC.
+Asymmetric cluster balancing fixes landed upstream in later Linux kernels, after 6.12. Enabling `CONFIG_SCHED_CLUSTER` without that six-patch series leaves equal-capacity clusters unbalanced. Revisit only if moving to a base that carries the series.
 
-Ricardo Neri's fix series, *sched: Fix cluster scheduling in the presence of
-asymmetric capacity*, went through six revisions between June 2025 and July 2026
-and was merged into the tip `sched/core` branch, pulled for the **v7.3** merge
-window (Ingo Molnar, 2026-08-17). It is not in 6.12 and will not be backported:
-it is a six-patch scheduler series touching `update_sd_pick_busiest()`,
-`sched_balance_find_src_rq()` and the `SD_PREFER_SIBLING` handling in
-`sched_domains`.
+### `scx_lavd` and active DAMON policies
 
-Enabling the symbol without the fix leaves cluster balancing broken on exactly
-the hardware this repo targets. Backporting a six-patch load-balancer series
-into a vendor 6.12 tree is not a change a daily-driver kernel should carry.
-
-**Revisit when** a 6.12-based GKI branch picks the series up, or when the repo
-moves to a kernel that has it.
-
----
-
-## Not started
-
-### `scx_lavd`
-
-`sched_ext` is already enabled (`CONFIG_SCHED_CLASS_EXT=y`), so the mechanism is
-there. `scx_lavd` is a latency-aware BPF scheduler that would replace the
-in-kernel policy for every task.
-
-Two things block it:
-
-1. It needs a userspace loader (`scx_loader` or the `scx_lavd` binary) running
-   as a service on the device. A kernel zip cannot ship that.
-2. It **replaces** BORE rather than stacking with it. Loading a `sched_ext`
-   scheduler takes over dispatch entirely, so the two are mutually exclusive by
-   construction.
-
-Shipping it means shipping a second thing to install and keep running, and
-losing BORE's in-kernel behaviour. Worth prototyping on a spare device, not
-worth making the default.
-
-### DAMON policies
-
-The mechanism is built in and dormant: `DAMON`, `DAMON_VADDR`, `DAMON_PADDR`,
-`DAMON_RECLAIM`, `DAMON_LRU_SORT`, `DAMON_SYSFS`. Nothing starts `kdamond`, so
-the cost when unused is code size only.
-
-A policy is a userspace decision, not a kernel one: which regions to monitor,
-what access pattern counts as hot, and what to do about it. `DAMON_RECLAIM`
-thrashing against a phone's working set is worse than no policy at all. This
-needs measurement on a real device before it needs code.
-
----
-
-## How to propose something
-
-1. Check the [Decided against](#decided-against) table first.
-2. Bring a source: an upstream commit, a mailing-list thread, a Kconfig help
-   text, or a measurement. "This is a known optimisation" is not one.
-3. State the cost. Every entry above that was rejected was rejected on cost, not
-   on the claim that it does nothing.
-4. If it is a patch, it goes through `scripts/check-patches.sh` and the CI gates
-   before it goes anywhere near a release.
+- `scx_lavd` requires a userspace daemon (`scx_loader` / `scx_lavd`) and replaces BORE.
+- DAMON mechanisms are compiled in and dormant (`kdamond` stays stopped unless userspace configures a policy). Needs device-specific tuning before enabling a boot policy.

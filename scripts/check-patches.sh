@@ -149,11 +149,8 @@ if [ "$susfs" = "true" ]; then
 fi
 
 [ "$bore" = "true" ] && add_patch_paths "$patches_dir/bore_6.12.patch"
-[ "$bore" = "true" ] && add_patch_paths "$patches_dir/bore-fix-6.12.23.patch"
 [ "$adios" = "true" ] && add_patch_paths "$patches_dir/adios_ioscheduler_6.12.patch"
 add_patch_paths "$patches_dir/susfs-fix-task_mmu-sus-map-gki-6.12.patch"
-add_patch_paths "$patches_dir/susfs-fix-namespace-headers-gki-6.1.patch"
-add_patch_paths "$patches_dir/susfs-fix-namespace-headers-gki-5.15.patch"
 
 # The CVE backports are applied on every 6.12 profile, so their paths are
 # always needed when the base is 6.12.
@@ -198,133 +195,19 @@ apply() {
   log "$label: clean"
 }
 
-# The build edits a handful of vendor files before the SUSFS patch, because the
-# patch's context expects headers and lines those trees do not have. Without
-# these the dry-run reports rejects the build never sees, which is how the
-# known-unbuildable list drifted. Mirrors the "Fake kernel patch to fix
-# failures" block in action.yml; keep the two in sync.
-#
-# perl rather than sed: BSD sed and GNU sed disagree about \t inside an append,
-# and this script runs on both.
-insert_after() {
-  # insert_after <file> <anchor> <marker> <text>
-  local file="$1" anchor="$2" marker="$3" text="$4"
-  [ -f "$file" ] || return 0
-  grep -qxF "$marker" "$file" && return 0
-  grep -qF "$anchor" "$file" || return 0
-  ANCHOR="$anchor" TEXT="$text" perl -i.bak -pe '
-    if (!$done && index($_, $ENV{ANCHOR}) >= 0) { $_ .= $ENV{TEXT}; $done = 1 }
-  ' "$file"
-  rm -f "$file.bak"
-  log "prepatch: ${file#"$kernel_dir"/} += ${marker#"${marker%%[![:space:]]*}"}"
-}
-
-delete_line() {
-  # delete_line <file> <exact line>
-  local file="$1" marker="$2"
-  [ -f "$file" ] || return 0
-  grep -qxF "$marker" "$file" || return 0
-  MARKER="$marker" perl -i.bak -ne 'print unless $_ eq "$ENV{MARKER}\n"' "$file"
-  rm -f "$file.bak"
-  log "prepatch: ${file#"$kernel_dir"/} -= $marker"
-}
-
-prepatch() {
-  local base="$kernel_dir"
-  case "${android}-${kernel}" in
-    android15-6.6)
-      insert_after "$base/fs/namespace.c" \
-        '#include <trace/hooks/blk.h>' \
-        '#include <trace/hooks/fs.h>' \
-        $'#include <trace/hooks/fs.h>\n'
-      insert_after "$base/fs/proc/task_mmu.c" \
-        'int ret = 0, copied = 0;' \
-        $'\tunsigned int nr_subpages = __PAGE_SIZE / PAGE_SIZE;' \
-        $'\tpagemap_entry_t *res = NULL;\n\tunsigned int nr_subpages = __PAGE_SIZE / PAGE_SIZE;\n'
-      insert_after "$base/fs/proc/base.c" \
-        '#include <linux/cpufreq_times.h>' \
-        '#include <linux/dma-buf.h>' \
-        $'#include <linux/dma-buf.h>\n'
-      insert_after "$base/mm/memory.c" \
-        '#include <linux/sched/sysctl.h>' \
-        '#include <linux/zswap.h>' \
-        $'#include <linux/zswap.h>\n'
-      # Widen the last_vma_end if block so the SUS_MAP hunk has a body to match.
-      if [ -f "$base/fs/proc/task_mmu.c" ] \
-         && grep -qF 'if (vma->vm_end > last_vma_end)' "$base/fs/proc/task_mmu.c" \
-         && ! grep -qxF 'SUSFS_IS_INODE_SUS_MAP' "$base/fs/proc/task_mmu.c"; then
-        perl -i.bak -0pe 's/\t\t\tif \(vma->vm_end > last_vma_end\)\n\t\t\t\tsmap_gather_stats\(vma, &mss, last_vma_end\);/\t\t\tif (vma->vm_end > last_vma_end) {\n\t\t\t\tsmap_gather_stats(vma, \&mss, last_vma_end);\n\t\t\t\tlast_vma_end = vma->vm_end;\n\t\t\t}/' \
-          "$base/fs/proc/task_mmu.c"
-        rm -f "$base/fs/proc/task_mmu.c.bak"
-        log "prepatch: fs/proc/task_mmu.c last_vma_end block widened"
-      fi
-      ;;
-    android13-5.15)
-      delete_line "$base/mm/memory.c" '#include <linux/swap_slots.h>'
-      ;;
-    android14-6.1)
-      insert_after "$base/fs/proc/base.c" \
-        '#include <linux/cpufreq_times.h>' \
-        '#include <linux/dma-buf.h>' \
-        $'#include <linux/dma-buf.h>\n'
-      ;;
-  esac
-}
-
 if [ "$susfs" = "true" ]; then
-  prepatch
-fi
-
-if [ "$susfs" = "true" ]; then
-  # The main patch is expected to reject on 6.12.30+; rc=1 is tolerated so the
-  # adapted fix below can run, exactly like the build does.
+  # The main patch rejects two hunks on 6.12.30+ (show_smaps_rollup refactor);
+  # rc=1 is tolerated so the adapted fix below can run, matching the build.
   rc=0
   ( cd "$kernel_dir" && patch -p1 --forward < "$susfs_patch" ) || rc=$?
   [ "$rc" -le 1 ] || fail "susfs: patch failed seriously (rc=$rc)"
 
   if find "$kernel_dir" -name 'task_mmu.c.rej' | grep -q .; then
-    case "$kernel" in
-      5.15)
-        # The OnePlus 5.15 trees already carry both SUS_MAP checks in
-        # show_smaps_rollup, so the hunks reject as already applied. Confirm
-        # that before dropping the reject.
-        if grep -qF 'SUSFS_IS_INODE_SUS_MAP' "$kernel_dir/fs/proc/task_mmu.c"; then
-          log "susfs: task_mmu already carries the SUS_MAP checks, dropping reject"
-          rm -f "$kernel_dir/fs/proc/task_mmu.c.rej"
-        else
-          fail "susfs: task_mmu rejected and the SUS_MAP checks are absent"
-        fi
-        ;;
-      *)
-        log "susfs: task_mmu rejected, applying adapted fix"
-        rm -f "$kernel_dir/fs/proc/task_mmu.c.rej"
-        apply "susfs task_mmu fix" "$patches_dir/susfs-fix-task_mmu-sus-map-gki-6.12.patch"
-        ;;
-    esac
+    log "susfs: task_mmu rejected, applying adapted fix"
+    rm -f "$kernel_dir/fs/proc/task_mmu.c.rej"
+    apply "susfs task_mmu fix" "$patches_dir/susfs-fix-task_mmu-sus-map-gki-6.12.patch"
   else
     log "susfs: task_mmu applied from the main patch, fix not needed"
-  fi
-
-  # The fs/namespace.c hunk uses #include <trace/hooks/blk.h> as context. The
-  # OnePlus 6.1 trees ship include/trace/hooks/fs.h instead and the 5.15 trees
-  # have no include/trace/hooks/ at all, so the hunk rejects on both. Re-apply
-  # it against the vendor context; only when the original hunk actually
-  # rejected.
-  if find "$kernel_dir" -name 'namespace.c.rej' | grep -q .; then
-    case "$kernel" in
-      5.15) ns_fix="$patches_dir/susfs-fix-namespace-headers-gki-5.15.patch" ;;
-      6.1)  ns_fix="$patches_dir/susfs-fix-namespace-headers-gki-6.1.patch" ;;
-      *)    ns_fix="" ;;
-    esac
-    if [ -n "$ns_fix" ] && [ -f "$ns_fix" ]; then
-      log "susfs: namespace rejected, applying adapted fix"
-      rm -f "$kernel_dir/fs/namespace.c.rej"
-      apply "susfs namespace fix" "$ns_fix"
-    else
-      fail "susfs: namespace rejected and no adapted fix for $kernel"
-    fi
-  else
-    log "susfs: namespace applied from the main patch, fix not needed"
   fi
 
   rejects=$(find "$kernel_dir" -name '*.rej' | sort)
@@ -339,33 +222,12 @@ fi
 if [ "$bore" = "true" ]; then
   case "$kernel" in
     6.12)
-      # Mirrors the build: vendor trees ship 750000ULL and a 0.75 msec comment,
-      # GKI canon is 700000ULL / 0.70 msec. Bracket expressions keep the sed
-      # free of backslashes.
+      # Mirrors the build: normalise any vendor 750000ULL base_slice and 0.75 msec
+      # comment to GKI canon before applying with -F0.
       sed -i.bak 's/750000ULL/700000ULL/g; s/0[.]75 msec/0.70 msec/g' \
         "$kernel_dir/kernel/sched/fair.c" 2>/dev/null || true
       rm -f "$kernel_dir/kernel/sched/fair.c.bak"
-      # -F0 mirrors the build: with fuzz the pick_eevdf hunk lands in the wrong
-      # place on 6.12.23 instead of rejecting.
-      rc=0
-      ( cd "$kernel_dir" && patch -p1 --forward --ignore-whitespace -F0 < "$patches_dir/bore_6.12.patch" ) || rc=$?
-      [ "$rc" -le 1 ] || fail "BORE: patch failed seriously (rc=$rc)"
-      if [ -f "$kernel_dir/kernel/sched/fair.c.rej" ]; then
-        rej_hunks=$(grep -c '^@@' "$kernel_dir/kernel/sched/fair.c.rej" || true)
-        if [ "$rej_hunks" != "2" ] \
-           || ! grep -q 'if (curr && protect && protect_slice(curr))' "$kernel_dir/kernel/sched/fair.c.rej" \
-           || ! grep -q 'se_bore(curr)->burst_time += delta_exec' "$kernel_dir/kernel/sched/fair.c.rej"; then
-          cat "$kernel_dir/kernel/sched/fair.c.rej" >&2
-          fail "BORE: unexpected rejects"
-        fi
-        log "BORE: 6.12.23 divergences detected, applying adapted hunks"
-        rc=0
-        ( cd "$kernel_dir" && patch -p1 --forward -F0 < "$patches_dir/bore-fix-6.12.23.patch" ) || rc=$?
-        [ "$rc" -eq 0 ] || fail "BORE: adapted hunks did not apply (rc=$rc)"
-        rm -f "$kernel_dir/kernel/sched/fair.c.rej"
-      else
-        log "BORE: clean"
-      fi
+      apply "BORE" "$patches_dir/bore_6.12.patch" --ignore-whitespace -F0
       # Post-conditions, same as the build.
       for needle in \
         'static const unsigned int nsecs_per_tick' \

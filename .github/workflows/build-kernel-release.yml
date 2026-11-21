@@ -1,4 +1,4 @@
-name: Build and Release OnePlus Kernels
+name: Build and Release OnePlus 15 (ColorOS 17) Kernel
 
 permissions:
   contents: write
@@ -8,101 +8,34 @@ on:
   workflow_dispatch:
     inputs:
       custom_release_tag:
-        description: 'Provide a custom release tag (e.g., v2.0.0). Leave empty to auto-generate.'
+        description: 'Provide a custom release tag (e.g., v2.3.0-r4). Leave empty to auto-generate.'
         required: false
         type: string
         default: ''
       op_model:
-        description: 'Select the OnePlus Devices to build'
+        description: 'Select the device profile to build'
         required: true
         type: choice
         options:
-          - All
-          - OP-ACE
-          - OP-ACE-2
-          - OP-ACE-2-PRO
-          - OP-ACE-2V
-          - OP-ACE-3
-          - OP-ACE-3-PRO
-          - OP-ACE-3V
-          - OP-ACE-5
-          - OP-ACE-5-PRO
-          - OP-ACE-5-RACE
-          - OP-ACE-5-ULTRA
-          - OP-ACE-6
-          - OP-ACE-6-ULTRA
-          - OP-ACE-6T
-          - OP-ACE-RACE
-          - OP-N6
-          - OP-NORD-3
-          - OP-NORD-4
-          - OP-NORD-4-CE
-          - OP-NORD-5
-          - OP-NORD-6
-          - OP-NORD-CE-5
-          - OP-NORD-CE4-LITE
-          - OP-NORD-CE6-LITE
-          - OP-NORD-N30-SE
-          - OP-OPEN
-          - OP-PAD-2-MT6991
-          - OP-PAD-2-PRO
-          - OP-PAD-2-SM8650
-          - OP-PAD-3-MT6897
-          - OP-PAD-3-PRO
-          - OP-PAD-3-SM8750
-          - OP-PAD-4
-          - OP-PAD-GO
-          - OP-PAD-GO-2
-          - OP-PAD-LITE
-          - OP-PAD-MT6983
-          - OP-PAD-PRO
-          - OP10pro
-          - OP10r
-          - OP10t
-          - OP11
-          - OP11r
-          - OP12
-          - OP12r
-          - OP13
-          - OP13-CPH
-          - OP13-PJZ
-          - OP13S
-          - OP13T
-          - OP13r
-          - OP15
           - OP15-COS17
-          - OP15-COS17-OH
-          - OP15r
-          - OP15T
-          - OP-TURBO-6
-          - OP-TURBO-6V
-          - OP-TURBO-6X
-        default: All
+          - All
+        default: OP15-COS17
       android_version_filter:
-        description: 'Select the Android Version to build'
+        description: 'Select the Android Version filter'
         required: true
         type: choice
         options:
-          - All
-          - A14
-          - A15
           - A16
-          - A14+A15
-          - A15+A16
-          - A14+A16
-        default: All
+          - All
+        default: A16
       kernel_version_filter:
-        description: 'Select the Kernel Version to build'
+        description: 'Select the Kernel Version filter'
         required: true
         type: choice
         options:
-          - All
-          - android12-5.10
-          - android13-5.15
-          - android14-6.1
-          - android15-6.6
           - android16-6.12
-        default: All
+          - All
+        default: android16-6.12
       ksu_options:
         description: 'Enter SukiSU-Ultra build json'
         required: true
@@ -172,22 +105,6 @@ on:
         required: false
         type: string
         default: ''
-      android12-5_10_susfs_branch_or_commit:
-        description: 'Enter SusFS Branch or commit hash for android12-5.10'
-        type: string
-        default: ''
-      android13-5_15_susfs_branch_or_commit:
-        description: 'Enter SusFS Branch or commit hash for android13-5.15'
-        type: string
-        default: ''
-      android14-6_1_susfs_branch_or_commit:
-        description: 'Enter SusFS Branch or commit hash for android14-6.1'
-        type: string
-        default: ''
-      android15-6_6_susfs_branch_or_commit:
-        description: 'Enter SusFS Branch or commit hash for android15-6.6'
-        type: string
-        default: ''
       android16-6_12_susfs_branch_or_commit:
         description: 'Enter SusFS Branch or commit hash for android16-6.12'
         type: string
@@ -198,15 +115,9 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
-      matrix_A14: ${{ steps.set-matrix.outputs.matrix_A14 }}
-      matrix_A15: ${{ steps.set-matrix.outputs.matrix_A15 }}
       matrix_A16: ${{ steps.set-matrix.outputs.matrix_A16 }}
       device_count: ${{ steps.set-matrix.outputs.count }}
       active_gki_keys: ${{ steps.set-matrix.outputs.active_gki_keys }}
-      susfs_hash_android12_5_10: ${{ steps.set-matrix.outputs.susfs_hash_android12_5_10 }}
-      susfs_hash_android13_5_15: ${{ steps.set-matrix.outputs.susfs_hash_android13_5_15 }}
-      susfs_hash_android14_6_1: ${{ steps.set-matrix.outputs.susfs_hash_android14_6_1 }}
-      susfs_hash_android15_6_6: ${{ steps.set-matrix.outputs.susfs_hash_android15_6_6 }}
       susfs_hash_android16_6_12: ${{ steps.set-matrix.outputs.susfs_hash_android16_6_12 }}
       ksu_resolved_hash: ${{ steps.set-matrix.outputs.ksu_resolved_hash }}
       ksu_options_normalized: ${{ steps.set-matrix.outputs.ksu_options_normalized }}
@@ -260,18 +171,6 @@ jobs:
           case "$input" in
             All)
               ;;
-            # OP15 and OP15-COS17 are two different devices on two different
-            # kernel bases, not a family. The generic prefix match below would
-            # make OP15 build both, so OP15 is exact and the ColorOS 17 profile
-            # gets its own selector.
-            OP15)
-              echo " Device-specific filter applied: $input (exact)"
-              jq_filter="map(select(.model == \"OP15\"))"
-              ;;
-            OP15-COS17-OH)
-              echo " Device-specific filter applied: $input -> OP15-COS17"
-              jq_filter="map(select(.model == \"OP15-COS17\"))"
-              ;;
             *)
               echo " Device-specific filter applied: $input"
               jq_filter="map(select(.model == \"$input\" or (.model | startswith(\"$input-\"))))"
@@ -283,25 +182,9 @@ jobs:
           
           case "$android_input" in
             "All")
-              # No additional filtering needed
-              ;;
-            "A14")
-              android_jq_filter=" | map(select(.os_version == \"A14\"))"
-              ;;
-            "A15")
-              android_jq_filter=" | map(select(.os_version == \"A15\"))"
               ;;
             "A16")
               android_jq_filter=" | map(select(.os_version == \"A16\"))"
-              ;;
-            "A14+A15" | "A15+A14")
-              android_jq_filter=" | map(select(.os_version == \"A14\" or .os_version == \"A15\"))"
-              ;;
-            "A15+A16" | "A16+A15")
-              android_jq_filter=" | map(select(.os_version == \"A15\" or .os_version == \"A16\"))"
-              ;;
-            "A14+A16" | "A16+A14")
-              android_jq_filter=" | map(select(.os_version == \"A14\" or .os_version == \"A16\"))"
               ;;
             *)
               echo "::warning::Unknown Android version filter '$android_input'."
@@ -478,18 +361,10 @@ jobs:
           GITLAB_PROJECT_PATH="simonpunk/susfs4ksu"
           
           declare -A default_branches=(
-            ["android12-5.10"]="gki-android12-5.10"
-            ["android13-5.15"]="gki-android13-5.15"
-            ["android14-6.1"]="gki-android14-6.1"
-            ["android15-6.6"]="gki-android15-6.6"
             ["android16-6.12"]="gki-android16-6.12"
           )
-          
+
           declare -A user_inputs=(
-            ["android12-5.10"]="${{ inputs.android12-5_10_susfs_branch_or_commit }}"
-            ["android13-5.15"]="${{ inputs.android13-5_15_susfs_branch_or_commit }}"
-            ["android14-6.1"]="${{ inputs.android14-6_1_susfs_branch_or_commit }}"
-            ["android15-6.6"]="${{ inputs.android15-6_6_susfs_branch_or_commit }}"
             ["android16-6.12"]="${{ inputs.android16-6_12_susfs_branch_or_commit }}"
           )
           
@@ -596,10 +471,6 @@ jobs:
           echo "active_gki_keys=$active_gki_keys_csv" >> "$GITHUB_OUTPUT"
 
           # Write hash to GITHUB_OUTPUT
-          echo "susfs_hash_android12_5_10=${susfs_hashes[android12-5.10]:-unknown}" >> "$GITHUB_OUTPUT"
-          echo "susfs_hash_android13_5_15=${susfs_hashes[android13-5.15]:-unknown}" >> "$GITHUB_OUTPUT"
-          echo "susfs_hash_android14_6_1=${susfs_hashes[android14-6.1]:-unknown}" >> "$GITHUB_OUTPUT"
-          echo "susfs_hash_android15_6_6=${susfs_hashes[android15-6.6]:-unknown}" >> "$GITHUB_OUTPUT"
           echo "susfs_hash_android16_6_12=${susfs_hashes[android16-6.12]:-unknown}" >> "$GITHUB_OUTPUT"
 
           # SUSFS_VERSION. Always resolved: the zip name carries it and the
@@ -643,16 +514,8 @@ jobs:
 
           # Inject susfs_resolved_hash into each device in the matrix
           susfs_hashes_json=$(jq -n \
-            --arg a12 "${susfs_hashes[android12-5.10]:-unknown}" \
-            --arg a13 "${susfs_hashes[android13-5.15]:-unknown}" \
-            --arg a14 "${susfs_hashes[android14-6.1]:-unknown}" \
-            --arg a15 "${susfs_hashes[android15-6.6]:-unknown}" \
             --arg a16 "${susfs_hashes[android16-6.12]:-unknown}" \
             '{
-              "android12-5.10": $a12,
-              "android13-5.15": $a13,
-              "android14-6.1": $a14,
-              "android15-6.6": $a15,
               "android16-6.12": $a16
             }')
 
@@ -679,14 +542,9 @@ jobs:
             )
           ')
           
-          # Split matrix by OOS version for better parallelism
+          # Wrap A16 matrix for build-A16
           matrix_A16=$(echo "$merged_matrix" | jq -c 'map(select(.os_version == "A16")) | {include: .}')
-          matrix_A15=$(echo "$merged_matrix" | jq -c 'map(select(.os_version == "A15")) | {include: .}')
-          matrix_A14=$(echo "$merged_matrix" | jq -c 'map(select(.os_version == "A14")) | {include: .}')
-          
           echo "matrix_A16=$matrix_A16" >> "$GITHUB_OUTPUT"
-          echo "matrix_A15=$matrix_A15" >> "$GITHUB_OUTPUT"
-          echo "matrix_A14=$matrix_A14" >> "$GITHUB_OUTPUT"
           
           # Maintain compatibility for existing job
           wrapped=$(jq -c '{ include: . }' <<< "$merged_matrix")
@@ -748,18 +606,10 @@ jobs:
           
           # Display SUSFS config for each kernel version
           declare -A susfs_inputs=(
-            ["android12-5.10"]="${{ inputs.android12-5_10_susfs_branch_or_commit }}"
-            ["android13-5.15"]="${{ inputs.android13-5_15_susfs_branch_or_commit }}"
-            ["android14-6.1"]="${{ inputs.android14-6_1_susfs_branch_or_commit }}"
-            ["android15-6.6"]="${{ inputs.android15-6_6_susfs_branch_or_commit }}"
             ["android16-6.12"]="${{ inputs.android16-6_12_susfs_branch_or_commit }}"
           )
           
           declare -A step_hashes=(
-            ["android12-5.10"]="${{ steps.set-matrix.outputs.susfs_hash_android12_5_10 }}"
-            ["android13-5.15"]="${{ steps.set-matrix.outputs.susfs_hash_android13_5_15 }}"
-            ["android14-6.1"]="${{ steps.set-matrix.outputs.susfs_hash_android14_6_1 }}"
-            ["android15-6.6"]="${{ steps.set-matrix.outputs.susfs_hash_android15_6_6 }}"
             ["android16-6.12"]="${{ steps.set-matrix.outputs.susfs_hash_android16_6_12 }}"
           )
           
@@ -929,129 +779,17 @@ jobs:
           lto_override: ${{ inputs.lto_override }}
           release_tag: ${{ needs.set-op-model.outputs.release_tag }}
 
-  build-A15:
-    name: build-A15 (${{ matrix.model }}, ${{ matrix.ksu_type == 'KSUN' && 'SukiSU-Ultra' || matrix.ksu_type }})
-    needs: [set-op-model, prepare_ccache, mirror_toolchain]
-    if: |
-      !cancelled() &&
-      needs.set-op-model.result == 'success' &&
-      (needs.mirror_toolchain.result == 'success' || needs.mirror_toolchain.result == 'skipped') &&
-      inputs.workflow_mode == 'Build & Release' &&
-      fromJSON(needs.set-op-model.outputs.matrix_A15).include[0] != null
-    runs-on: ubuntu-latest
-    env:
-      CCACHE_DIR: ${{ github.workspace }}/.ccache
-      LDCACHE_DIR: ${{ github.workspace }}/.ld_cache
-      CCACHE_LOGFILE: ${{ github.workspace }}/ccache.log
-    strategy:
-      fail-fast: false
-      max-parallel: 4
-      matrix: ${{ fromJSON(needs.set-op-model.outputs.matrix_A15) }}
-    timeout-minutes: 180
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v6
-      - name: Get prebuilt ccache (downloaded once by prepare_ccache)
-        uses: actions/download-artifact@v8
-        with:
-          name: ccache-binary
-          path: ccache-dl
-        continue-on-error: true
-      - name: Set up ccache
-        run: |
-          if [ -f ccache-dl/ccache ]; then
-            sudo cp ccache-dl/ccache /usr/local/bin/
-            sudo chmod +x /usr/local/bin/ccache
-            ccache --version
-          else
-            echo "::warning::ccache binary not found from artifact. Falling back to apt ccache."
-            sudo apt-get -o Acquire::Retries=3 update -qq
-            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ccache
-            ccache --version
-          fi
-      - name: Build Kernel
-        uses: ./.github/actions/build-kernel
-        with:
-          op_config_json: ${{ toJSON(matrix) }}
-          ksu_type: ${{ matrix.ksu_type }}
-          ksu_branch_or_hash: ${{ matrix.ksu_resolved_hash }}
-          susfs_commit_hash_or_branch: ${{ matrix.susfs_resolved_hash }}
-          optimize_level: ${{ inputs.optimize_level }}
-          build_timestamp: ${{ inputs.build_timestamp }}
-          clean: ${{ inputs.clean_build }}
-          debug: ${{ inputs.debug }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          ksu_mode: ${{ inputs.ksu_mode }}
-          lto_override: ${{ inputs.lto_override }}
-          release_tag: ${{ needs.set-op-model.outputs.release_tag }}
-
-  build-A14:
-    name: build-A14 (${{ matrix.model }}, ${{ matrix.ksu_type == 'KSUN' && 'SukiSU-Ultra' || matrix.ksu_type }})
-    needs: [set-op-model, prepare_ccache, mirror_toolchain]
-    if: |
-      !cancelled() &&
-      needs.set-op-model.result == 'success' &&
-      (needs.mirror_toolchain.result == 'success' || needs.mirror_toolchain.result == 'skipped') &&
-      inputs.workflow_mode == 'Build & Release' &&
-      fromJSON(needs.set-op-model.outputs.matrix_A14).include[0] != null
-    runs-on: ubuntu-latest
-    env:
-      CCACHE_DIR: ${{ github.workspace }}/.ccache
-      LDCACHE_DIR: ${{ github.workspace }}/.ld_cache
-      CCACHE_LOGFILE: ${{ github.workspace }}/ccache.log
-    strategy:
-      fail-fast: false
-      max-parallel: 4
-      matrix: ${{ fromJSON(needs.set-op-model.outputs.matrix_A14) }}
-    timeout-minutes: 180
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v6
-      - name: Get prebuilt ccache (downloaded once by prepare_ccache)
-        uses: actions/download-artifact@v8
-        with:
-          name: ccache-binary
-          path: ccache-dl
-        continue-on-error: true
-      - name: Set up ccache
-        run: |
-          if [ -f ccache-dl/ccache ]; then
-            sudo cp ccache-dl/ccache /usr/local/bin/
-            sudo chmod +x /usr/local/bin/ccache
-            ccache --version
-          else
-            echo "::warning::ccache binary not found from artifact. Falling back to apt ccache."
-            sudo apt-get -o Acquire::Retries=3 update -qq
-            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ccache
-            ccache --version
-          fi
-      - name: Build Kernel
-        uses: ./.github/actions/build-kernel
-        with:
-          op_config_json: ${{ toJSON(matrix) }}
-          ksu_type: ${{ matrix.ksu_type }}
-          ksu_branch_or_hash: ${{ matrix.ksu_resolved_hash }}
-          susfs_commit_hash_or_branch: ${{ matrix.susfs_resolved_hash }}
-          optimize_level: ${{ inputs.optimize_level }}
-          build_timestamp: ${{ inputs.build_timestamp }}
-          clean: ${{ inputs.clean_build }}
-          debug: ${{ inputs.debug }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          ksu_mode: ${{ inputs.ksu_mode }}
-          lto_override: ${{ inputs.lto_override }}
-          release_tag: ${{ needs.set-op-model.outputs.release_tag }}
-
   trigger-release:
-    needs: [set-op-model, build-A16, build-A15, build-A14]
+    needs: [set-op-model, build-A16]
     runs-on: ubuntu-latest
     if: ${{ always() && inputs.make_release && !cancelled() && (inputs.workflow_mode == 'Release Only' || !failure()) }}
-    environment: ${{ (github.ref_name == 'main' || github.ref_name == 'Beta-2' || github.ref_name == 'testing') && 'Production-Release' || '' }}
+    environment: ${{ github.ref_name == 'main' && 'Production-Release' || '' }}
     env:
       REPO_OWNER: ${{ github.repository_owner }}
       REPO_NAME: ${{ github.event.repository.name }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       SUSFS_BASE_VERSION: ${{ needs.set-op-model.outputs.susfs_base_version }}
-      RELEASE_NAME: 'OnePlus Kernels With SukiSU-Ultra & SUSFS ${{ needs.set-op-model.outputs.susfs_base_version }}'
+      RELEASE_NAME: 'OnePlus 15 (ColorOS 17) Kernel With SukiSU-Ultra & SUSFS ${{ needs.set-op-model.outputs.susfs_base_version }}'
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -1170,22 +908,6 @@ jobs:
             fi
           done
           
-          OPTIMIZE_LEVEL="${{ inputs.optimize_level }}"
-          CLEAN_BUILD="${{ inputs.clean_build }}"
-          
-          # Hash map for GKI version
-          declare -A susfs_map=(
-            ["android12-5.10"]="${{ needs.set-op-model.outputs.susfs_hash_android12_5_10 }}"
-            ["android13-5.15"]="${{ needs.set-op-model.outputs.susfs_hash_android13_5_15 }}"
-            ["android14-6.1"]="${{ needs.set-op-model.outputs.susfs_hash_android14_6_1 }}"
-            ["android15-6.6"]="${{ needs.set-op-model.outputs.susfs_hash_android15_6_6 }}"
-            ["android16-6.12"]="${{ needs.set-op-model.outputs.susfs_hash_android16_6_12 }}"
-          )
-          
-          # List of GKI versions present in this run
-          IFS=',' read -ra active_gki_keys \
-            <<< "${{ needs.set-op-model.outputs.active_gki_keys }}"
-          
           if [ ${#device_info[@]} -gt 0 ]; then
             first_entry=$(printf '%s\n' "${!device_info[@]}" | sort | head -n1)
             IFS='|' read -r _ _ _ _ ksu_ver_global _ _ <<< "${device_info[$first_entry]}"
@@ -1194,7 +916,7 @@ jobs:
           fi
 
           cat << EOF > release_notes.md
-          # OnePlus Kernels ${NEW_TAG}
+          # OnePlus 15 (ColorOS 17) Kernel ${NEW_TAG}
 
           Built: $(date -u '+%Y-%m-%d %H:%M UTC') | Run: \`${{ github.run_id }}\` | SukiSU-Ultra ${ksu_ver_global} | SUSFS ${SUSFS_BASE_VERSION}
 

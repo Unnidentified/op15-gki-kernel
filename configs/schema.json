@@ -38,7 +38,7 @@
     "model": {
       "type": "string",
       "minLength": 1,
-      "description": "Device identifier. Must match the op_model workflow choice, or be that choice plus a '-' suffix (op_model=OP15 selects OP15 and OP15-COS17)."
+      "description": "Device identifier matching the op_model workflow choice (OP15-COS17)."
     },
     "soc": {
       "type": "string",

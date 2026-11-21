@@ -1,9 +1,8 @@
 name: Scheduled Workflow Failure Notify
 
-# The OnePlusOSS kernel monitor ran every 12 hours and failed silently for
-# weeks because nothing watched it. A red run in the Actions tab is not a
-# notification. This watches the scheduled workflows and pushes failures to
-# Telegram, which is where the release announcements already go.
+# A red run in the Actions tab is not a notification. This watches the
+# scheduled workflows and pushes failures to Telegram, which is where the release
+# announcements already go.
 #
 # workflow_run (not a step inside each workflow) so the scheduled workflows
 # stay untouched and a failure in any of them is caught the same way.
@@ -12,9 +11,8 @@ on:
   workflow_run:
     workflows:
       - Cache Warmer
-      - Check for New OnePlus Devices
       - ToolChains Generator
-      - OnePlusOSS Kernel Monitor
+      - Patch Sweep
     types: [completed]
   workflow_dispatch:
     inputs:

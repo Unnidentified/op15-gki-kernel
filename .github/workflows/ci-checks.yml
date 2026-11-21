@@ -55,13 +55,8 @@ jobs:
           fi
 
           # Every model must survive the device filter the workflow applies.
-          # OP15 is exact-only there, so it is exact-only here too; everything
-          # else keeps the family prefix match.
           while read -r model; do
-            case "$model" in
-              OP15) n=$(jq '[.[] | select(.model == "OP15")] | length' /tmp/matrix.json) ;;
-              *)    n=$(jq --arg m "$model" 'map(select(.model == $m or (.model | startswith($m + "-")))) | length' /tmp/matrix.json) ;;
-            esac
+            n=$(jq --arg m "$model" 'map(select(.model == $m or (.model | startswith($m + "-")))) | length' /tmp/matrix.json)
             if [ "$n" -eq 0 ]; then
               echo "::error::device filter for '$model' matches nothing"
               exit 1
@@ -88,10 +83,6 @@ jobs:
           def matches(sel):
               if sel == "All":
                   return len(profiles)
-              if sel == "OP15":
-                  return sum(1 for p in profiles if p.get("model") == "OP15")
-              if sel == "OP15-COS17-OH":
-                  return sum(1 for p in profiles if p.get("model") == "OP15-COS17")
               return sum(
                   1 for p in profiles
                   if p.get("model") == sel or str(p.get("model", "")).startswith(sel + "-")

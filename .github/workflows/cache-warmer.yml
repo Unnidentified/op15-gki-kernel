@@ -11,10 +11,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
-      susfs_hash_android12_5_10: ${{ steps.set-matrix.outputs.susfs_hash_android12_5_10 }}
-      susfs_hash_android13_5_15: ${{ steps.set-matrix.outputs.susfs_hash_android13_5_15 }}
-      susfs_hash_android14_6_1: ${{ steps.set-matrix.outputs.susfs_hash_android14_6_1 }}
-      susfs_hash_android15_6_6: ${{ steps.set-matrix.outputs.susfs_hash_android15_6_6 }}
       susfs_hash_android16_6_12: ${{ steps.set-matrix.outputs.susfs_hash_android16_6_12 }}
     steps:
       - name: Checkout Code
@@ -29,16 +25,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          
-          # Dynamically resolve SUSFS branch hashes
-          resolve_branch() {
-            git ls-remote https://gitlab.com/simonpunk/susfs4ksu.git "refs/heads/$1" | awk '{print $1}'
-          }
-          echo "susfs_hash_android12_5_10=$(resolve_branch gki-android12-5.10 || echo 'ca7093a1a26f7911987110c34a1352d74cfb1d09')" >> $GITHUB_OUTPUT
-          echo "susfs_hash_android13_5_15=$(resolve_branch gki-android13-5.15 || echo '2ad297356931ba06b4edc0860f42fdd143b02ffd')" >> $GITHUB_OUTPUT
-          echo "susfs_hash_android14_6_1=$(resolve_branch gki-android14-6.1 || echo '5369359dbd10f6dd8cbdd59d1df7b788b29b168c')" >> $GITHUB_OUTPUT
-          echo "susfs_hash_android15_6_6=$(resolve_branch gki-android15-6.6 || echo '2d11d711de80f0f749b3055f8da8f7b9682454e4')" >> $GITHUB_OUTPUT
-          echo "susfs_hash_android16_6_12=acb92d4abc922cac384a207744b2db40281a7c7f" >> $GITHUB_OUTPUT
+
+          echo "susfs_hash_android16_6_12=acb92d4abc922cac384a207744b2db40281a7c7f" >> "$GITHUB_OUTPUT"
 
           echo "[" > matrix.json
           mapfile -t all_json_files < <(find configs/ -mindepth 2 -name "*.json" -print0 | xargs -0 -n1)
@@ -52,10 +40,9 @@ jobs:
             fi
           done
           echo "]" >> matrix.json
-          
-          # Wrap the array in a matrix format
-          MATRIX=$(cat matrix.json | jq -c '{include: .}')
-          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
+
+          MATRIX=$(jq -c '{include: .}' < matrix.json)
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
 
   prepare_ccache:
     name: Prepare ccache binary (download once)
@@ -106,15 +93,12 @@ jobs:
         run: |
           set -uo pipefail
           echo "::group::Fetch susfs4ksu refs once"
-          refs="${{ needs.generate-matrix.outputs.susfs_hash_android12_5_10 }} ${{ needs.generate-matrix.outputs.susfs_hash_android13_5_15 }} ${{ needs.generate-matrix.outputs.susfs_hash_android14_6_1 }} ${{ needs.generate-matrix.outputs.susfs_hash_android15_6_6 }} ${{ needs.generate-matrix.outputs.susfs_hash_android16_6_12 }}"
-          # config-level pins (e.g. OP15-COS17's susfs_hash) are part of the matrix too
+          refs="${{ needs.generate-matrix.outputs.susfs_hash_android16_6_12 }} gki-android16-6.12"
           mapfile -t all_json_files < <(find configs/ -mindepth 2 -name "*.json" -print0 | xargs -0 -n1)
           for f in "${all_json_files[@]}"; do
             h=$(jq -r '.susfs_hash // empty' "$f" 2>/dev/null || true)
             [ -n "$h" ] && refs="$refs $h"
           done
-          # branch names, for builds that resolve by branch
-          refs="$refs gki-android12-5.10 gki-android13-5.15 gki-android14-6.1 gki-android15-6.6 gki-android16-6.12"
           refs=$(echo "$refs" | tr ' ' '\n' | sed '/^$/d' | sort -u | tr '\n' ' ')
           git init -q susfs4ksu
           cd susfs4ksu
@@ -140,13 +124,6 @@ jobs:
           path: susfs4ksu
           retention-days: 1
           if-no-files-found: error
-          # The fetch step runs `git init` + `git fetch` and never checks
-          # anything out, so the only content is .git/. upload-artifact skips
-          # hidden files by default, which made this step fail with "No files
-          # were found with the provided path: susfs4ksu" on every run. The
-          # build action needs susfs4ksu/.git to resolve the refs offline
-          # (see the `-d susfs4ksu/.git` check in build-kernel/action.yml), so
-          # the hidden files are the payload, not an accident.
           include-hidden-files: true
 
   warm-cache:
@@ -164,34 +141,17 @@ jobs:
       - name: Resolve SUSFS Hash
         id: susfs_res
         run: |
-          # Match the logic from the release workflow
-          ANDROID_VER="${{ matrix.android_version }}"
-          KERNEL_VER="${{ matrix.kernel_version }}"
-          
-          if [[ "$ANDROID_VER" == "android12" && "$KERNEL_VER" == "5.10" ]]; then
-            HASH="${{ needs.generate-matrix.outputs.susfs_hash_android12_5_10 }}"
-          elif [[ "$ANDROID_VER" == "android13" && "$KERNEL_VER" == "5.15" ]]; then
-            HASH="${{ needs.generate-matrix.outputs.susfs_hash_android13_5_15 }}"
-          elif [[ "$ANDROID_VER" == "android14" && "$KERNEL_VER" == "6.1" ]]; then
-            HASH="${{ needs.generate-matrix.outputs.susfs_hash_android14_6_1 }}"
-          elif [[ "$ANDROID_VER" == "android15" && "$KERNEL_VER" == "6.6" ]]; then
-            HASH="${{ needs.generate-matrix.outputs.susfs_hash_android15_6_6 }}"
-          elif [[ "$ANDROID_VER" == "android16" && "$KERNEL_VER" == "6.12" ]]; then
+          HASH="${{ matrix.susfs_hash }}"
+          if [ -z "$HASH" ]; then
             HASH="${{ needs.generate-matrix.outputs.susfs_hash_android16_6_12 }}"
-          else
-            HASH=""
           fi
-          echo "hash=$HASH" >> $GITHUB_OUTPUT
+          echo "hash=$HASH" >> "$GITHUB_OUTPUT"
 
       - name: Install Minimal Dependencies
         run: |
           set -euo pipefail
           echo "::group::Install dependencies"
           sudo apt-get -o Acquire::Retries=3 update -qq
-          # lz4, not liblz4-tool: the latter was a transitional package that
-          # depended on lz4 and was dropped in Ubuntu 24.04, which is what the
-          # runner image moved to. apt-get then fails with "no installation
-          # candidate" and takes the whole matrix down with it.
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             git curl ca-certificates build-essential clang lld flex bison \
             libelf-dev libssl-dev libncurses-dev zlib1g-dev lz4 \
@@ -229,10 +189,8 @@ jobs:
           if command -v ccache >/dev/null 2>&1; then
             CACHE_DIR="${{ github.workspace }}/.ccache"
             LDCACHE_DIR="${{ github.workspace }}/.ld_cache"
-            CCACHE_LOG="${{ github.workspace }}/ccache.log"
-            mkdir -p "$CACHE_DIR"
-            mkdir -p "$LDCACHE_DIR"
-            
+            mkdir -p "$CACHE_DIR" "$LDCACHE_DIR"
+
             SETTINGS=(
               "CCACHE_DIR=$CACHE_DIR"
               "LDCACHE_DIR=$LDCACHE_DIR"
@@ -250,19 +208,18 @@ jobs:
               "CCACHE_UMASK=002"
               "CCACHE_SLOPPINESS=file_macro,time_macros,include_file_mtime,include_file_ctime,pch_defines,system_headers,locale"
             )
-            
+
             for setting in "${SETTINGS[@]}"; do
               export "$setting"
               echo "$setting" >> "$GITHUB_ENV"
             done
-            
+
             if ccache --help 2>&1 | grep -q 'depend_mode'; then
               export CCACHE_DEPEND=true
               echo "CCACHE_DEPEND=true" >> "$GITHUB_ENV"
             fi
-            
+
             echo " ccache configured successfully"
-            echo "Current ccache configuration:"
             ccache -p
           else
             echo "ccache not found, skipping configuration."
