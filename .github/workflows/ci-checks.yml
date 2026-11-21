@@ -222,11 +222,13 @@ jobs:
               --model OP15-COS17 --os-version A16 \
               --android-version android16 --kernel-version 6.12 \
               --kernel-full-version android16-6.12.69 \
+              --ksu-type SUKISU --ksu-variant SukiSU-Ultra \
               --optimization O2 --lto none \
               --kasan true --bbg false --bbr3 true \
+              --opt true --ds true --ntsync true \
               --autofdo true --mlgo true --bore true --adios true --damon true \
               --feature-tag true/true/true/KASAN:true/O2/LTO:none/AFDO:true/MLGO:true/BBR3:true/BBG:false \
-              --release-tag v2.3.0-r1 \
+              --release-tag v2.3.0-r2 \
               --zip /tmp/fake.zip > /dev/null
             python3 - <<'PY'
           import json
@@ -234,10 +236,11 @@ jobs:
           assert data["schema"] == 2, f"unexpected schema {data.get('schema')}"
           k = data["kernel"]
           assert k["source_url"] and k["source_ref"], "kernel source did not resolve"
+          assert data["ksu"]["type"] == "SUKISU" and data["ksu"]["variant"] == "SukiSU-Ultra"
           f = data["features"]
-          for key in ("kasan_hw_tags", "bbg", "bbr3", "bore", "adios", "damon", "autofdo", "mlgo", "lto", "optimization", "feature_tag"):
+          for key in ("kasan_hw_tags", "bbg", "bbr3", "opt", "ds", "ntsync", "bore", "adios", "damon", "autofdo", "mlgo", "lto", "optimization", "feature_tag"):
               assert key in f, f"missing feature key: {key}"
-          assert data["artifact"]["release_tag"] == "v2.3.0-r1"
+          assert data["artifact"]["release_tag"] == "v2.3.0-r2"
           PY
             count=$((count + 1))
           done
@@ -270,6 +273,13 @@ jobs:
               failed = True
           if cfg.get("bbg") is not False:
               print("::error::OP15-COS17.json must keep bbg=false for EFISP chainloader compatibility")
+              failed = True
+          for toggle in ("opt", "ds", "ntsync", "autofdo"):
+              if cfg.get(toggle) is not True:
+                  print(f"::error::OP15-COS17.json must keep {toggle}=true")
+                  failed = True
+          if cfg.get("lto") != "none":
+              print("::error::OP15-COS17.json must keep lto='none' for AutoFDO compatibility")
               failed = True
           susfs_hash = cfg.get("susfs_hash", "")
           if not re.fullmatch(r"[0-9a-f]{40}", susfs_hash):

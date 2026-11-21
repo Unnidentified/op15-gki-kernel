@@ -51,6 +51,14 @@ inputs:
     description: 'Release tag this run will be published under (e.g. v2.3.0-r3). Its -rN revision is appended to the zip name so the artifact matches the release asset. Empty leaves the name without a revision.'
     required: false
     default: ''
+  autofdo_profile_url:
+    description: 'Optional custom kernel.afdo URL override. Empty uses the device config or pinned AOSP android16-6.12 profile.'
+    required: false
+    default: ''
+  autofdo_profile_sha256:
+    description: 'Optional SHA-256 checksum for a custom autofdo_profile_url override.'
+    required: false
+    default: ''
 
 outputs:
   kernel_version:
@@ -342,10 +350,38 @@ runs:
           errors+=("Input 'ksu_mode' must be 'lkm' or 'builtin'. Got: '$ksu_mode'")
         fi
         if [ "${{ env.OP_SUSFS }}" = "true" ] && [ "$ksu_mode" = "lkm" ]; then
-          echo "::warning::SUSFS requires in-tree SukiSU-Ultra compilation for supercall hooks. Automatically switching ksu_mode to 'builtin'..."
+          echo "::warning::SUSFS requires in-tree compilation for supercall hooks. Automatically switching ksu_mode to 'builtin'..."
           ksu_mode="builtin"
         fi
         echo "KSUMODE=$ksu_mode" >> "$GITHUB_ENV"
+
+        raw_ksu_type=$(echo '${{ inputs.ksu_type }}' | tr '[:lower:]' '[:upper:]')
+        case "$raw_ksu_type" in
+          SUKISU|SUKISU-ULTRA|SUKISU_ULTRA)
+            ksu_type_norm="SUKISU"
+            ksu_variant_tag="SukiSU"
+            ksu_variant_name="SukiSU-Ultra"
+            ;;
+          KSUN|KERNELSU-NEXT|KERNELSU_NEXT|NEXT)
+            ksu_type_norm="KSUN"
+            ksu_variant_tag="KSUN"
+            ksu_variant_name="KernelSU-Next"
+            ;;
+          KSU)
+            ksu_type_norm="KSU"
+            ksu_variant_tag="KSU"
+            ksu_variant_name="KernelSU"
+            ;;
+          *)
+            errors+=("Input 'ksu_type' must be SUKISU, KSUN, or KSU. Got: '${{ inputs.ksu_type }}'")
+            ksu_type_norm="SUKISU"
+            ksu_variant_tag="SukiSU"
+            ksu_variant_name="SukiSU-Ultra"
+            ;;
+        esac
+        echo "KSU_TYPE_NORM=$ksu_type_norm" >> "$GITHUB_ENV"
+        echo "KSU_VARIANT_TAG=$ksu_variant_tag" >> "$GITHUB_ENV"
+        echo "KSU_VARIANT_NAME=$ksu_variant_name" >> "$GITHUB_ENV"
         
         if [ ${#errors[@]} -ne 0 ]; then
           echo "Found ${#errors[@]} validation error(s):" >&2
@@ -355,7 +391,7 @@ runs:
           echo "::error::Input validation failed. See logs for details."
           exit 1
         else
-          echo " Input validation passed (SukiSU-Ultra Mode: $ksu_mode)"
+          echo " Input validation passed ($ksu_variant_name, Mode: $ksu_mode)"
         fi
         echo "::endgroup::"
 
@@ -426,7 +462,7 @@ runs:
         echo "KSUN_FOLDER=$KSUN_DIR" >> "$GITHUB_ENV"
         echo "LKM_FOLDER=$LKM_DIR" >> "$GITHUB_ENV"
         
-        DEBUG_ZIP_NAME="debug_${OP_MODEL}_${OP_OS_VERSION}.zip"
+        DEBUG_ZIP_NAME="debug_${OP_MODEL}_${OP_OS_VERSION}_${KSU_VARIANT_TAG}.zip"
         echo "DEBUG_ZIP_NAME=$DEBUG_ZIP_NAME" >> "$GITHUB_ENV"
 
     - name: Fetch SakFi AnyKernel3
@@ -756,12 +792,16 @@ runs:
       if: ${{ inputs.clean == false || inputs.clean == 'false' }}
       with:
         cache_path: ${{ env.CCACHE_DIR }}
-        cache_key: ${{ inputs.ksu_type }}-v3-${{ env.OP_MODEL }}-${{ env.OP_OS_VERSION }}-${{ env.KERNEL_FULL_VER }}-${{ env.CLANG_VERSION_SHORT }}
+        cache_key: ${{ env.KSU_TYPE_NORM }}-v3-${{ env.OP_MODEL }}-${{ env.OP_OS_VERSION }}-${{ env.KERNEL_FULL_VER }}-${{ env.CLANG_VERSION_SHORT }}
         cache_bucket: "ccache-cache"
+        github_token: ${{ inputs.github_token }}
         debug: ${{ inputs.debug }}
         restore_keys: |
-          ${{ inputs.ksu_type }}-v3-${{ env.OP_MODEL }}-${{ env.OP_OS_VERSION }}-${{ env.KERNEL_FULL_VER }}-
-          ${{ inputs.ksu_type }}-v3-${{ env.OP_MODEL }}-${{ env.OP_OS_VERSION }}-
+          ${{ env.KSU_TYPE_NORM }}-v3-${{ env.OP_MODEL }}-${{ env.OP_OS_VERSION }}-${{ env.KERNEL_FULL_VER }}-
+          KSUN-v3-${{ env.OP_MODEL }}-${{ env.OP_OS_VERSION }}-${{ env.KERNEL_FULL_VER }}-
+          SUKISU-v3-${{ env.OP_MODEL }}-${{ env.OP_OS_VERSION }}-${{ env.KERNEL_FULL_VER }}-
+          ${{ env.KSU_TYPE_NORM }}-v3-${{ env.OP_MODEL }}-${{ env.OP_OS_VERSION }}-
+          KSUN-v3-${{ env.OP_MODEL }}-${{ env.OP_OS_VERSION }}-
 
     - name: Check and Prepare Caches
       shell: bash
@@ -770,6 +810,28 @@ runs:
         set -euo pipefail
         
         echo "/usr/lib/ccache" >> $GITHUB_PATH
+        mkdir -p "${CCACHE_DIR:-$GITHUB_WORKSPACE/.ccache}" "${LDCACHE_DIR:-$GITHUB_WORKSPACE/.ld_cache}"
+        for setting in \
+          "CCACHE_MAXSIZE=12G" \
+          "CCACHE_COMPILERCHECK=content" \
+          "CCACHE_BASEDIR=${GITHUB_WORKSPACE}" \
+          "CCACHE_NOHASHDIR=true" \
+          "CCACHE_IGNOREOPTIONS=--sysroot*" \
+          "CCACHE_COMPRESSION=true" \
+          "CCACHE_COMPRESSION_LEVEL=3" \
+          "CCACHE_DIRECT=true" \
+          "CCACHE_FILE_CLONE=true" \
+          "CCACHE_INODE_CACHE=true" \
+          "CCACHE_IS_KERNEL_COMPILING=true" \
+          "CCACHE_UMASK=002" \
+          "CCACHE_SLOPPINESS=file_macro,time_macros,include_file_mtime,include_file_ctime,pch_defines,system_headers,locale"; do
+          export "$setting"
+          echo "$setting" >> "$GITHUB_ENV"
+        done
+        if ccache --help 2>&1 | grep -q 'depend_mode'; then
+          export CCACHE_DEPEND=true
+          echo "CCACHE_DEPEND=true" >> "$GITHUB_ENV"
+        fi
         
         echo "Current ccache configuration:"
         ccache -p
@@ -1003,7 +1065,7 @@ runs:
 
     - name: Add SukiSU Ultra
       shell: bash
-      if: ${{ inputs.ksu_type == 'KSUN' }}
+      if: ${{ env.KSU_TYPE_NORM == 'SUKISU' }}
       run: |
         set -euo pipefail
         echo "::group::Add SukiSU Ultra"
@@ -1237,6 +1299,93 @@ runs:
         fi
         echo "::endgroup::"
 
+    - name: Add KernelSU-Next
+      shell: bash
+      if: ${{ env.KSU_TYPE_NORM == 'KSUN' }}
+      run: |
+        set -euo pipefail
+        echo "::group::Add KernelSU-Next"
+        cd "$KERNEL_PLATFORM_FOLDER"
+        echo "Adding KernelSU-Next..."
+        KSU_INPUT="${{ inputs.ksu_branch_or_hash }}"
+        KSUN_URL="https://github.com/KernelSU-Next/KernelSU-Next.git"
+
+        rm -rf KernelSU KernelSU-Next
+        git clone "$KSUN_URL" KernelSU-Next
+        if [ -z "$KSU_INPUT" ]; then
+          git -C KernelSU-Next checkout -f dev
+          echo "Checked out default branch: dev"
+        else
+          if ! git -C KernelSU-Next checkout -f "$KSU_INPUT" 2>/dev/null; then
+            git -C KernelSU-Next fetch origin "$KSU_INPUT"
+            git -C KernelSU-Next checkout -f FETCH_HEAD
+          fi
+          if [[ "$KSU_INPUT" =~ ^[0-9a-f]{40}$ ]]; then
+            actual_sha=$(git -C KernelSU-Next rev-parse HEAD)
+            if [ "$actual_sha" != "$KSU_INPUT" ]; then
+              echo "::error::Expected KernelSU-Next commit $KSU_INPUT, got $actual_sha"
+              exit 1
+            fi
+          fi
+          echo "Checked out requested ref: $KSU_INPUT ($(git -C KernelSU-Next rev-parse --short HEAD))"
+        fi
+
+        DRIVER_DIR="$COMMON_KERNEL_FOLDER/drivers"
+        ln -sf "$(realpath --relative-to="$DRIVER_DIR" "$(pwd)/KernelSU-Next/kernel")" "$DRIVER_DIR/kernelsu"
+        grep -q "kernelsu" "$DRIVER_DIR/Makefile" || printf '\nobj-$(CONFIG_KSU) += kernelsu/\n' >> "$DRIVER_DIR/Makefile"
+        grep -q 'source "drivers/kernelsu/Kconfig"' "$DRIVER_DIR/Kconfig" || sed -i '/endmenu/i\source "drivers/kernelsu/Kconfig"' "$DRIVER_DIR/Kconfig"
+
+        if [ -d "KernelSU-Next" ] && [ ! -d "KernelSU" ]; then
+          ln -s KernelSU-Next KernelSU
+        fi
+
+        lsm_count_patch="${GITHUB_ACTION_PATH}/patches/sukisu-lsm-count-6.12.patch"
+        if [ -f "$COMMON_KERNEL_FOLDER/include/linux/lsm_count.h" ]; then
+          if patch -p1 --dry-run --forward -d "$COMMON_KERNEL_FOLDER" < "$lsm_count_patch" >/dev/null 2>&1; then
+            patch -p1 --forward -d "$COMMON_KERNEL_FOLDER" < "$lsm_count_patch"
+            echo " Applied LSM slot reservation patch: sukisu-lsm-count-6.12"
+          fi
+        fi
+
+        git submodule update --init --recursive
+        cd KernelSU-Next/kernel
+
+        COMMITS_COUNT=$(/usr/bin/git rev-list --count HEAD)
+        if [ "$COMMITS_COUNT" -lt 2684 ]; then
+          BASE_VERSION=10200
+        else
+          BASE_VERSION=30000
+        fi
+        KSU_VERSION=$(expr "$COMMITS_COUNT" "+" "$BASE_VERSION")
+        sed -i "s/DKSU_VERSION=11998/DKSU_VERSION=${KSU_VERSION}/" Makefile 2>/dev/null || true
+
+        if [ -f ksu.c ]; then
+          sed -i 's/#if defined(CONFIG_STACKPROTECTOR) && (defined(CONFIG_ARM64) && !defined(CONFIG_STACKPROTECTOR_PER_TASK))/#if 0/' ksu.c
+        fi
+
+        if [ "$KSU_VERSION" -lt 12884 ]; then
+          echo "NEED_HOOKS=true" >> "$GITHUB_ENV"
+        else
+          echo "NEED_HOOKS=false" >> "$GITHUB_ENV"
+        fi
+
+        cd ..
+        KSU_COMMIT_SHA=$(git rev-parse HEAD)
+        echo "KSU_COMMIT_SHA=$KSU_COMMIT_SHA" >> "$GITHUB_ENV"
+
+        echo "Add KernelSU-Next Configuration Settings"
+        cat >> "$COMMON_KERNEL_FOLDER/arch/arm64/configs/gki_defconfig" <<EOF
+        CONFIG_KSU=y
+        CONFIG_KSU_KPROBES_HOOK=n
+        EOF
+
+        echo "KernelSU-Next" >> "${ARTIFACTS_FOLDER}/${OP_MODEL}_${OP_OS_VERSION}.txt"
+        echo "$KSU_VERSION" >> "${ARTIFACTS_FOLDER}/${OP_MODEL}_${OP_OS_VERSION}.txt"
+        echo "KSUVER=$KSU_VERSION" >> "$GITHUB_ENV"
+        echo "KernelSU-Next Version: $KSU_VERSION"
+        echo " KernelSU-Next added (commit: ${KSU_COMMIT_SHA:0:8})"
+        echo "::endgroup::"
+
     - name: Add KernelSU
       shell: bash
       if: ${{ inputs.ksu_type == 'KSU' }}
@@ -1455,40 +1604,54 @@ runs:
             fi
             ;;
           "v2.2.0"|"v2.3.0"|"v2.4.0")
-            if [ "${{ inputs.ksu_type }}" = "KSUN" ]; then
+            if [ "${KSU_TYPE_NORM}" = "SUKISU" ] || [ "${KSU_TYPE_NORM}" = "KSUN" ]; then
               cd "$KSUN_FOLDER"
               # SukiSU-Ultra 'builtin' already carries the full in-kernel SUSFS
               # integration; applying the KSU-side patch on top would reject.
-              # Trees without a KSU_SUSFS Kconfig (main/dev) need it applied.
+              # Trees without a KSU_SUSFS Kconfig (KernelSU-Next dev, etc.) need
+              # 10_enable_susfs_for_ksu.patch and its companion fixups applied.
               if grep -q "^config KSU_SUSFS" "./kernel/Kconfig" 2>/dev/null; then
-                echo "SukiSU Ultra already contains integrated SUSFS hooks. Skipping KSU patch."
+                echo "KSU tree already contains integrated SUSFS hooks. Skipping KSU patch."
               else
-              patch -p1 --forward < "$SUSFS_FOLDER/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch" || true
-              mapfile -t rej_files < <(find ./kernel -name "*.rej")
-              for rej_file in "${rej_files[@]}"; do
-                [ -f "$rej_file" ] || continue
-                file=$(basename "$rej_file" .rej)
-                fix_patch="$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/fix_$file.patch"
-                if [ -f "$fix_patch" ]; then
-                  echo "Patching file: $file with fix_$file.patch"
-                  rm -f "$rej_file"
-                  patch -p1 --forward < "$fix_patch"
-                elif [ -f "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/fix_${file}.c.patch" ]; then
-                  echo "Patching file: $file with fix_${file}.c.patch"
-                  rm -f "$rej_file"
-                  patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/fix_${file}.c.patch"
-                else
-                  echo " No fix patch found for $file (reject file: $rej_file)"
+                patch -p1 --batch --forward < "$SUSFS_FOLDER/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch" || true
+                mapfile -t rej_files < <(find ./kernel -name "*.rej" | sort)
+                for rej_file in "${rej_files[@]}"; do
+                  [ -f "$rej_file" ] || continue
+                  file=$(basename "$rej_file" .rej)
+                  stem="${file%.c}"
+                  local_fix="${GITHUB_ACTION_PATH}/patches/ksun-susfs-${susfs_version}-fix-${stem}.patch"
+                  fix_patch="$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/fix_$file.patch"
+                  if [ -f "$local_fix" ]; then
+                    echo "Patching file: $file with local $(basename "$local_fix")"
+                    rm -f "$rej_file"
+                    patch -p1 --batch --forward < "$local_fix"
+                  elif [ -f "$fix_patch" ]; then
+                    echo "Patching file: $file with fix_$file.patch"
+                    rm -f "$rej_file"
+                    patch -p1 --batch --forward < "$fix_patch"
+                  elif [ -f "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/fix_${file}.c.patch" ]; then
+                    echo "Patching file: $file with fix_${file}.c.patch"
+                    rm -f "$rej_file"
+                    patch -p1 --batch --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/fix_${file}.c.patch"
+                  else
+                    echo " No fix patch found for $file (reject file: $rej_file)"
+                  fi
+                done
+                echo "Patching Hook Mode"
+                patch -p1 --batch --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/overwrite_hook_mode.patch"
+                echo "Patching KSU_TOOLKIT Support for SusFS kernel"
+                patch -p1 --batch --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/ksu_toolkit.patch"
+              fi
+              if [[ "${KSUVER:-0}" -gt 30000 ]] && [[ "${{ env.KERNEL_VER }}" == "6.12" ]] && [ -f "./kernel/Kbuild" ]; then
+                if ! grep -qF ' -I$(KSU_KERNEL_DIR)/include/uapi' ./kernel/Kbuild; then
+                  sed -i 's|ccflags-y += -I$(KSU_KERNEL_DIR) -I$(KSU_KERNEL_DIR)/include|ccflags-y += -I$(KSU_KERNEL_DIR) -I$(KSU_KERNEL_DIR)/include -I$(KSU_KERNEL_DIR)/include/uapi|' ./kernel/Kbuild
                 fi
-              done
-              echo "Patching Hook Mode"
-              patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/overwrite_hook_mode.patch"
-              echo "Patching KSU_TOOLKIT Support for SusFS kernel"
-              patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/next/susfs_fix_patches/$susfs_version/ksu_toolkit.patch"
+                sed -i 's|$(srctree)/$(src)|$(abspath $(src))|g' ./kernel/Kbuild
+                sed -i 's|KSU_KERNEL_DIR := $(src)|KSU_KERNEL_DIR := $(abspath $(src))|g' ./kernel/Kbuild
               fi
             else
               cd "$KSU_FOLDER"
-              patch -p1 --forward < "$SUSFS_FOLDER/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch" || true
+              patch -p1 --batch --forward < "$SUSFS_FOLDER/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch" || true
             fi
             ;;
           *)
@@ -1912,58 +2075,40 @@ runs:
         echo "::group::Apply Optimisation patches"
         cd "$COMMON_KERNEL_FOLDER"
 
-        # Only patches reviewed for this repo are applied. The upstream set is
-        # larger, and the rest of it is not something to apply blind:
+        # Curated local patches generated cleanly against android16-6.12.69
+        # (242e1a07f8782987c579929a20a74c0b26e88608). Only genuine power and
+        # suspend/wakeup fixes are kept:
+        #   - opt-alarmtimer-minimize-wakeup-time-6.12.patch
+        #       ktime_to_ms(min) + 1 instead of a fixed 2s wakeup hold on -EBUSY
+        #   - opt-pm-wakeup-avoid-extra-s2idle-6.12.patch
+        #       only call s2idle_wake() when pm_abort_suspend transitions 0 -> 1
+        #   - opt-pci-pme-timeout-4000-6.12.patch
+        #       bump PME_TIMEOUT from 1000 ms to 4000 ms
         #
-        #   optimized_mem_operations   patches lib/string.c inside
-        #                              #ifndef __HAVE_ARCH_MEMCPY/MEMSET/MEMMOVE.
-        #                              arm64 defines all three and uses
-        #                              arch/arm64/lib/*.S, so this compiles to
-        #                              nothing here.
-        #   silence_irq_cpu_logspam    pr_warn -> pr_debug on IRQ affinity
-        #                              failure. Hides a real error.
-        #   silence_system_logspam     drops devkmsg writes whose text contains
-        #                              "healthd"/"logd"/"dashd". Breaks logging.
-        #   add_timeout_wakelocks_globally
-        #                              turns indefinite wakelocks into 500 ms
-        #                              timeouts. Can cut short work that legitimately
-        #                              needs to stay awake.
-        #   increase_ext4_default_commit_age
-        #                              5s -> 30s commit interval. More data at
-        #                              risk on an unclean shutdown.
-        #   disable_cache_hot_buddy    turns off the EEVDF feature that keeps a
-        #                              task on its CPU. Costs cache locality.
-        #   file_struct_8bytes_align   changes struct file alignment for no
-        #                              stated benefit.
-        #   add_limitation_scaling_min_freq / re_write_... / use_unlikely_wrap_cpufreq
-        #                              a cpufreq sysfs feature, not an
-        #                              optimisation. The last one depends on the
-        #                              first, so all three go together.
-        #
-        # Adding a name here means reviewing the patch first.
+        # Dropped from the upstream WildKernels opt bundle:
+        #   increase_sk_mem_packets      targets SK_WMEM_DEFAULT removed in 6.12.69
+        #   mem_opt_prefetch             2015 prfm hints counterproductive on Oryon
+        #   reduce_cache_pressure        runtime sysctl, not a kernel patch
+        #   reduce_gc_thread_sleep_time  already configured by Android vold
+        #   f2fs_reduce_congestion       unverified F2FS congestion heuristic tweak
+        #   f2fs_enlarge_min_fsync_blocks changes F2FS fsync threshold
+        #   adjust_cpu_scan_order        sched domain scan-order hack
         OPT_PATCHES=(
-          mem_opt_prefetch
-          avoid_extra_s2idle_wake_attempts
-          minimise_wakeup_time
-          adjust_cpu_scan_order
-          reduce_cache_pressure
-          increase_sk_mem_packets
-          f2fs_reduce_congestion
-          f2fs_enlarge_min_fsync_blocks
-          reduce_pci_pme_wakeups
-          reduce_gc_thread_sleep_time
+          opt-alarmtimer-minimize-wakeup-time-6.12.patch
+          opt-pm-wakeup-avoid-extra-s2idle-6.12.patch
+          opt-pci-pme-timeout-4000-6.12.patch
         )
 
         for name in "${OPT_PATCHES[@]}"; do
-          p="$KERNEL_PATCHES_FOLDER/common/$name.patch"
+          p="${GITHUB_ACTION_PATH}/patches/$name"
           if [ ! -f "$p" ]; then
-            echo "::error::Reviewed opt patch is missing upstream: $name.patch"
+            echo "::error::Curated local opt patch is missing: $p"
             exit 1
           fi
           patch -p1 --forward < "$p"
           echo "   applied $name"
         done
-        echo "   ${#OPT_PATCHES[@]} reviewed patches applied"
+        echo "   ${#OPT_PATCHES[@]} curated local opt patches applied"
         echo "::endgroup::"
 
     - name: Apply NTSync Patch
@@ -2409,21 +2554,47 @@ runs:
         # input, so a silent change to it would silently change every kernel
         # we ship.
         AFDO_COMMIT="3962e99d7c7335f02f63527384d5ae487da648d1"
-        AFDO_SHA256="e1e8f1ae45ed228655a922f34bc46325c4bf542ef20fb518a6e5bc8a90969818"
+        DEFAULT_AFDO_SHA256="e1e8f1ae45ed228655a922f34bc46325c4bf542ef20fb518a6e5bc8a90969818"
+        DEFAULT_AFDO_URL="https://android.googlesource.com/kernel/common/+/${AFDO_COMMIT}/gki/aarch64/afdo/kernel.afdo?format=TEXT"
+
+        CUSTOM_AFDO_URL="${{ inputs.autofdo_profile_url }}"
+        if [ -z "$CUSTOM_AFDO_URL" ]; then
+          CUSTOM_AFDO_URL="${OP_AUTOFDO_URL:-}"
+        fi
+        CUSTOM_AFDO_SHA256="${{ inputs.autofdo_profile_sha256 }}"
+        if [ -z "$CUSTOM_AFDO_SHA256" ]; then
+          CUSTOM_AFDO_SHA256="${OP_AUTOFDO_SHA256:-}"
+        fi
+
         AFDO_PROFILE="$RUNNER_TEMP/kernel.afdo"
-        AFDO_URL="https://android.googlesource.com/kernel/common/+/${AFDO_COMMIT}/gki/aarch64/afdo/kernel.afdo?format=TEXT"
+        if [ -n "$CUSTOM_AFDO_URL" ]; then
+          AFDO_URL="$CUSTOM_AFDO_URL"
+          AFDO_SHA256="$CUSTOM_AFDO_SHA256"
+          echo "Using custom AutoFDO profile override: $AFDO_URL"
+        else
+          AFDO_URL="$DEFAULT_AFDO_URL"
+          AFDO_SHA256="${CUSTOM_AFDO_SHA256:-$DEFAULT_AFDO_SHA256}"
+        fi
 
         echo "Downloading $AFDO_URL"
-        if ! curl -fsSL --retry 3 --retry-delay 5 "$AFDO_URL" | base64 -d > "$AFDO_PROFILE"; then
+        if [[ "$AFDO_URL" == *"format=TEXT"* ]]; then
+          dl_ok=0
+          curl -fsSL --retry 3 --retry-delay 5 "$AFDO_URL" | base64 -d > "$AFDO_PROFILE" && dl_ok=1
+        else
+          dl_ok=0
+          curl -fsSL --retry 3 --retry-delay 5 "$AFDO_URL" -o "$AFDO_PROFILE" && dl_ok=1
+        fi
+        if [ "$dl_ok" -ne 1 ] || [ ! -s "$AFDO_PROFILE" ]; then
           echo "::error::Failed to download the AutoFDO profile. Refusing to build without it: a kernel that silently drops AutoFDO is not the kernel this profile was enabled for."
           exit 1
         fi
 
         actual="$(sha256sum "$AFDO_PROFILE" | cut -d' ' -f1)"
-        if [ "$actual" != "$AFDO_SHA256" ]; then
+        if [ -n "$AFDO_SHA256" ] && [ "$actual" != "$AFDO_SHA256" ]; then
           echo "::error::AutoFDO profile checksum mismatch. Expected $AFDO_SHA256, got $actual."
           exit 1
         fi
+        AFDO_SHA256="$actual"
 
         echo "AFDO_PROFILE=$AFDO_PROFILE" >> "$GITHUB_ENV"
         echo "AFDO_SHA256=$AFDO_SHA256" >> "$GITHUB_ENV"
@@ -2805,6 +2976,11 @@ runs:
         audit "${OP_ADIOS:-false}"   MQ_IOSCHED_ADIOS   "ADIOS I/O scheduler" 6.12
         audit "${OP_DAMON:-false}"   DAMON              "DAMON"
         audit "${OP_AUTOFDO:-false}" AUTOFDO_CLANG      "AutoFDO"             6.12
+        audit "${OP_NTSYNC:-false}"  NTSYNC             "NTSync"
+        audit "${OP_DS:-false}"      SYSVIPC            "Droidspaces (SYSVIPC)"
+        audit "${OP_DS:-false}"      PID_NS             "Droidspaces (PID_NS)"
+        audit "${OP_DS:-false}"      USER_NS            "Droidspaces (USER_NS)"
+        audit "${OP_DS:-false}"      POSIX_MQUEUE       "Droidspaces (POSIX_MQUEUE)"
 
         # Baseline hardening is unconditional on 6.6+, so there is no config
         # flag to key off - check it directly.
@@ -2895,7 +3071,7 @@ runs:
           
           ls -la "$DEBUG_ARTIFACTS_FOLDER"
         else
-          make LD="$COMMON_KERNEL_FOLDER/ld-wrapper" HOSTLD="$COMMON_KERNEL_FOLDER/ld-wrapper" -j"$(nproc --all)" O="$OUT" KCFLAGS="$KCFLAGS" KCPPFLAGS="$KCPPFLAGS" CONFIG_FAKE_DISABLE="$CONFIG_FAKE_DISABLE" Image 2>&1 | tee build.log
+          make LD="$COMMON_KERNEL_FOLDER/ld-wrapper" HOSTLD="$COMMON_KERNEL_FOLDER/ld-wrapper" -j"$(nproc --all)" O="$OUT" KCFLAGS="$KCFLAGS" KCPPFLAGS="$KCPPFLAGS" CONFIG_FAKE_DISABLE="$CONFIG_FAKE_DISABLE" Image modules 2>&1 | tee build.log
         fi
         
         BUILD_END=$(date +%s)
@@ -3069,9 +3245,9 @@ runs:
         echo "KERNEL_UNAME=$KERNEL_UNAME" >> "$GITHUB_ENV"
 
         # Binary ABI & boot-invariant verification on the final Image
-        python3 - "$IMG" "${OP_KASAN:-false}" "${KSUMODE:-lkm}" "${OP_SUSFS:-false}" "${OP_KERNEL_VERSION:-6.12}" <<'PY'
+        python3 - "$IMG" "${OP_KASAN:-false}" "${KSUMODE:-lkm}" "${OP_SUSFS:-false}" "${OP_KERNEL_VERSION:-6.12}" "${KSU_TYPE_NORM:-SUKISU}" <<'PY'
         import re, sys
-        img_path, kasan, ksumode, susfs, kver = sys.argv[1:6]
+        img_path, kasan, ksumode, susfs, kver, ksutype = sys.argv[1:7]
         data = open(img_path, "rb").read()
         if kasan == "true":
             if b"\x00kasan_flag_enabled\x00" not in data:
@@ -3079,10 +3255,19 @@ runs:
                 sys.exit(1)
             print(" Verified: kasan_flag_enabled present in Image")
         if ksumode != "lkm" and kver == "6.12":
-            if b"LSM hooks initialized." not in data:
-                print("::error::KernelSU builtin LSM hook init string missing from Image", file=sys.stderr)
-                sys.exit(1)
-            print(" Verified: builtin KernelSU LSM hook init present in Image")
+            if ksutype == "SUKISU":
+                if b"LSM hooks initialized." not in data:
+                    print("::error::SukiSU-Ultra builtin LSM hook init string missing from Image", file=sys.stderr)
+                    sys.exit(1)
+                print(" Verified: builtin SukiSU-Ultra LSM hook init present in Image")
+            else:
+                if b"welcome to KernelSU version" not in data:
+                    print("::error::KernelSU-Next builtin init string missing from Image", file=sys.stderr)
+                    sys.exit(1)
+                if susfs == "true" and b"Inline (SuSFS)" not in data:
+                    print("::error::KernelSU-Next Inline (SuSFS) hook mode string missing from Image", file=sys.stderr)
+                    sys.exit(1)
+                print(" Verified: builtin KernelSU-Next init and Inline (SuSFS) hook mode present in Image")
         if susfs == "true":
             if b"susfs is initialized!" not in data:
                 print("::error::SUSFS init string missing from Image", file=sys.stderr)
@@ -3187,17 +3372,18 @@ runs:
             ZIP_REV="-r$rev"
           fi
         fi
+        VARIANT_SUFFIX="_${KSU_VARIANT_TAG:-SukiSU}"
         if [ "${KSUMODE:-lkm}" = "lkm" ]; then
           if [ "${{ env.OP_SUSFS }}" = true ]; then
-            ZIP_NAME="${ZIP_MODEL}_${KERNEL_FULL_VER}-SuSFS_${SUSVER:-unknown}${ZIP_REV}_LKM.zip"
+            ZIP_NAME="${ZIP_MODEL}_${KERNEL_FULL_VER}-SuSFS_${SUSVER:-unknown}${ZIP_REV}${VARIANT_SUFFIX}_LKM.zip"
           else
-            ZIP_NAME="${ZIP_MODEL}_${KERNEL_FULL_VER}${ZIP_REV}_LKM.zip"
+            ZIP_NAME="${ZIP_MODEL}_${KERNEL_FULL_VER}${ZIP_REV}${VARIANT_SUFFIX}_LKM.zip"
           fi
         else
           if [ "${{ env.OP_SUSFS }}" = true ]; then
-            ZIP_NAME="${ZIP_MODEL}_${KERNEL_FULL_VER}-SuSFS_${SUSVER:-unknown}${ZIP_REV}.zip"
+            ZIP_NAME="${ZIP_MODEL}_${KERNEL_FULL_VER}-SuSFS_${SUSVER:-unknown}${ZIP_REV}${VARIANT_SUFFIX}.zip"
           else
-            ZIP_NAME="${ZIP_MODEL}_${KERNEL_FULL_VER}${ZIP_REV}.zip"
+            ZIP_NAME="${ZIP_MODEL}_${KERNEL_FULL_VER}${ZIP_REV}${VARIANT_SUFFIX}.zip"
           fi
         fi
         echo "FEATURE_TAG=$FEATURE_TAG" >> "$GITHUB_ENV"
@@ -3278,7 +3464,7 @@ runs:
         set -euo pipefail
         echo "::group::Write build info"
         WRITER="${{ github.action_path }}/../../../scripts/build-info.py"
-        OUT="$GITHUB_WORKSPACE/${OP_MODEL}_${OP_OS_VERSION}_build-info.json"
+        OUT="$GITHUB_WORKSPACE/${OP_MODEL}_${OP_OS_VERSION}_${KSU_VARIANT_TAG:-SukiSU}_build-info.json"
 
         if [ ! -f "$WRITER" ]; then
           echo "::error::build-info writer not found at $WRITER"
@@ -3300,7 +3486,8 @@ runs:
           --susfs-version "${SUSVER:-}" \
           --susfs-ref "${SUSFS_REF:-}" \
           --susfs-commit "${SUSFS_COMMIT_SHA:-}" \
-          --ksu-type "${{ inputs.ksu_type }}" \
+          --ksu-type "${KSU_TYPE_NORM:-${{ inputs.ksu_type }}}" \
+          --ksu-variant "${KSU_VARIANT_NAME:-SukiSU-Ultra}" \
           --ksu-version "${KSUVER:-}" \
           --ksu-ref "${{ inputs.ksu_branch_or_hash }}" \
           --ksu-commit "${KSU_COMMIT_SHA:-}" \
@@ -3316,6 +3503,9 @@ runs:
           --kasan "${OP_KASAN:-false}" \
           --bbg "${OP_BBG:-false}" \
           --bbr3 "${OP_BBR3:-false}" \
+          --opt "${OP_OPT:-false}" \
+          --ds "${OP_DS:-false}" \
+          --ntsync "${OP_NTSYNC:-false}" \
           --feature-tag "${FEATURE_TAG:-}" \
           --release-tag "${OP_RELEASE_TAG:-}" \
           --patchset-commit "${WILDKERNELS_COMMIT:-}" \
@@ -3347,13 +3537,8 @@ runs:
           echo "Kernel Uname: ${{ env.KERNEL_UNAME }}"
           echo "Build User: ${{ env.BUILD_USER }}"
           echo "Build Host: ${{ env.BUILD_HOST }}"
-          if [ "${{ inputs.ksu_type }}" = "KSUN" ]; then
-            echo "SukiSU-Ultra Version: ${KSUVER:-unknown}"
-            echo "SukiSU-Ultra commit SHA: ${KSU_SHA:-unknown}"
-          else
-            echo "KSU Version: ${KSUVER:-unknown}"
-            echo "KSU commit SHA: ${KSU_SHA:-unknown}"
-          fi
+          echo "${KSU_VARIANT_NAME:-SukiSU-Ultra} Version: ${KSUVER:-unknown}"
+          echo "${KSU_VARIANT_NAME:-SukiSU-Ultra} commit SHA: ${KSU_SHA:-unknown}"
           if [ "${{ env.OP_SUSFS }}" = true ]; then
             echo "SUSFS Version: ${SUSVER:-unknown}"
             echo "SUSFS commit SHA: $SUSFS_SHA"
@@ -3406,23 +3591,19 @@ runs:
           echo "| **OS Version** | ${{ env.OP_OS_VERSION }} |"
           echo "| **Kernel Version** | ${{ steps.save_metadata.outputs.kernel_version }} |"
           echo "| **Kernel Uname** | \`${{ env.KERNEL_UNAME }}\` |"
-          echo "| **SukiSU-Ultra Mode** | \`${KSUMODE:-lkm}\` |"
-          echo "| **Build User** | ${{ env.BUILD_USER }} |"
-          echo "| **Build Host** | ${{ env.BUILD_HOST }} |"
-          if [ "${{ inputs.ksu_type }}" = "KSUN" ]; then
-            echo "| **SukiSU-Ultra Version** | ${KSUVER:-unknown} |"
-          else
-            echo "| **KSU Version** | ${KSUVER:-unknown} |"
-          fi
+          echo "| **Root Variant** | ${KSU_VARIANT_NAME:-SukiSU-Ultra} (\`${KSUMODE:-builtin}\`) |"
+          echo "| **${KSU_VARIANT_NAME:-SukiSU-Ultra} Version** | ${KSUVER:-unknown} |"
           
           if [ "$KSU_SHA" != "unknown" ]; then
-            if [ "${{ inputs.ksu_type }}" = "KSUN" ]; then
-              echo "| **SukiSU Commit** | [\`${KSU_SHA:0:8}\`](https://github.com/SukiSU-Ultra/SukiSU-Ultra/commit/$KSU_SHA) |"
+            if [ "${KSU_TYPE_NORM:-SUKISU}" = "SUKISU" ]; then
+              echo "| **Root Commit** | [\`${KSU_SHA:0:8}\`](https://github.com/SukiSU-Ultra/SukiSU-Ultra/commit/$KSU_SHA) |"
+            elif [ "${KSU_TYPE_NORM:-SUKISU}" = "KSUN" ]; then
+              echo "| **Root Commit** | [\`${KSU_SHA:0:8}\`](https://github.com/KernelSU-Next/KernelSU-Next/commit/$KSU_SHA) |"
             else
-              echo "| **KSU Commit** | [\`${KSU_SHA:0:8}\`](https://github.com/tiann/KernelSU/commit/$KSU_SHA) |"
+              echo "| **Root Commit** | [\`${KSU_SHA:0:8}\`](https://github.com/tiann/KernelSU/commit/$KSU_SHA) |"
             fi
           else
-            echo "| **KSU Commit** | unknown |"
+            echo "| **Root Commit** | unknown |"
           fi
           
           if [ "${{ env.OP_SUSFS }}" = true ]; then
@@ -3482,7 +3663,7 @@ runs:
       if: failure()
       uses: actions/upload-artifact@v7
       with:
-        name: ${{ env.OP_MODEL }}_${{ env.OP_OS_VERSION }}_patch_rejects
+        name: ${{ env.OP_MODEL }}_${{ env.OP_OS_VERSION }}_${{ env.KSU_VARIANT_TAG }}_patch_rejects
         path: ${{ github.workspace }}/patch_rejects/
         if-no-files-found: ignore
         retention-days: 7
@@ -3510,7 +3691,7 @@ runs:
       if: ${{ always() && !cancelled() }}
       uses: actions/upload-artifact@v7
       with:
-        name: ${{ env.OP_MODEL }}_${{ env.OP_OS_VERSION }}_kmi_report
+        name: ${{ env.OP_MODEL }}_${{ env.OP_OS_VERSION }}_${{ env.KSU_VARIANT_TAG }}_kmi_report
         path: ${{ github.workspace }}/kmi-report.txt
         if-no-files-found: ignore
         retention-days: 30
@@ -3519,7 +3700,7 @@ runs:
       if: ${{ always() && steps.build_info.conclusion == 'success' }}
       uses: actions/upload-artifact@v7
       with:
-        name: ${{ env.OP_MODEL }}_${{ env.OP_OS_VERSION }}_build_info
+        name: ${{ env.OP_MODEL }}_${{ env.OP_OS_VERSION }}_${{ env.KSU_VARIANT_TAG }}_build_info
         path: ${{ steps.build_info.outputs.build_info_path }}
         archive: false
         retention-days: 90
@@ -3528,7 +3709,7 @@ runs:
       if: success() && inputs.debug == 'true' && steps.build_kernel_step.conclusion == 'success'
       uses: actions/upload-artifact@v7
       with:
-        name: "${{ env.OP_MODEL }}_${{ env.OP_OS_VERSION }}_${{ env.KERNEL_FULL_VER }}_ccache.log"
+        name: "${{ env.OP_MODEL }}_${{ env.OP_OS_VERSION }}_${{ env.KSU_VARIANT_TAG }}_${{ env.KERNEL_FULL_VER }}_ccache.log"
         path: ${{ env.CCACHE_LOGFILE }}
         archive: false
         compression-level: 0
@@ -3546,7 +3727,7 @@ runs:
       uses: ./action-source/.github/actions/cache/save
       with:
         cache_path: ${{ env.CCACHE_DIR }}
-        cache_key: ${{ inputs.ksu_type }}-v3-${{ env.OP_MODEL }}-${{ env.OP_OS_VERSION }}-${{ env.KERNEL_FULL_VER }}-${{ env.CLANG_VERSION_SHORT }}
+        cache_key: ${{ env.KSU_TYPE_NORM }}-v3-${{ env.OP_MODEL }}-${{ env.OP_OS_VERSION }}-${{ env.KERNEL_FULL_VER }}-${{ env.CLANG_VERSION_SHORT }}
         cache_bucket: "ccache-cache"
         debug: ${{ inputs.debug }}
         github_token: ${{ inputs.github_token }}

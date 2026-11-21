@@ -1,0 +1,20 @@
+From: Arjan van de Ven <arjan@linux.intel.com>
+Subject: [PATCH] PCI: bump PME_TIMEOUT from 1000 to 4000 ms
+
+Reduce periodic PME polling wakeups from 1 second to 4 seconds.
+
+Signed-off-by: Arjan van de Ven <arjan@linux.intel.com>
+---
+diff --git a/drivers/pci/pci.c b/drivers/pci/pci.c
+index c5f16bc..0bbf30d 100644
+--- a/drivers/pci/pci.c
++++ b/drivers/pci/pci.c
+@@ -67,7 +67,7 @@ struct pci_pme_device {
+ 	struct pci_dev *dev;
+ };
+ 
+-#define PME_TIMEOUT 1000 /* How long between PME checks */
++#define PME_TIMEOUT 4000 /* How long between PME checks */
+ 
+ /*
+  * Following exit from Conventional Reset, devices must be ready within 1 sec

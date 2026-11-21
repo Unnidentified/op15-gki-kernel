@@ -37,18 +37,28 @@ on:
           - All
         default: android16-6.12
       ksu_options:
-        description: 'Enter SukiSU-Ultra build json'
+        description: 'Enter root variant build JSON (sukisu = SukiSU-Ultra, ksun = KernelSU-Next, ksu = KernelSU)'
         required: true
         type: string
-        default: '[{"type":"ksun","hash":"builtin"}]'
+        default: '[{"type":"sukisu","hash":"builtin"},{"type":"ksun","hash":"dev"}]'
       ksu_mode:
-        description: 'SukiSU-Ultra Integration Mode (builtin = In-tree with full SUSFS support [Recommended], lkm = Modular LKM)'
+        description: 'Root Integration Mode (builtin = In-tree with full SUSFS support [Recommended], lkm = Modular LKM)'
         required: true
         type: choice
         options:
           - builtin
           - lkm
         default: builtin
+      autofdo_profile_url:
+        description: 'Optional custom kernel.afdo URL override (leave empty for pinned AOSP android16-6.12 profile)'
+        required: false
+        type: string
+        default: ''
+      autofdo_profile_sha256:
+        description: 'Optional SHA-256 checksum for a custom autofdo_profile_url override'
+        required: false
+        type: string
+        default: ''
       optimize_level:
         description: "Compiler optimization level"
         required: true
@@ -147,7 +157,25 @@ jobs:
           
           input="${{ github.event.inputs.op_model }}"
           ksu_options_raw='${{ github.event.inputs.ksu_options }}'
-          if ! ksu_options_normalized=$(echo "$ksu_options_raw" | jq -c 'map(if .type then .type |= ascii_upcase | if .hash == null then if .type == "KSUN" then .hash = "builtin" elif .type == "KSU" then .hash = "main" else .hash end else . end else error("No type found") end)' 2>&1); then
+          if ! ksu_options_normalized=$(echo "$ksu_options_raw" | jq -c '
+            map(
+              if .type then
+                .type |= (
+                  ascii_upcase |
+                  if . == "SUKISU" or . == "SUKISU-ULTRA" or . == "SUKISU_ULTRA" then "SUKISU"
+                  elif . == "KSUN" or . == "KERNELSU-NEXT" or . == "KERNELSU_NEXT" or . == "NEXT" then "KSUN"
+                  elif . == "KSU" or . == "KERNELSU" then "KSU"
+                  else error("Unsupported ksu_type: " + .)
+                  end
+                ) |
+                if (.hash // "") == "" then
+                  if .type == "SUKISU" then .hash = "builtin"
+                  elif .type == "KSUN" then .hash = "dev"
+                  elif .type == "KSU" then .hash = "main"
+                  else .hash end
+                else . end
+              else error("No type found") end
+            )' 2>&1); then
             echo "::error::ksu_options validation failed: $ksu_options_normalized"
             exit 1
           fi
@@ -260,20 +288,6 @@ jobs:
           
           echo "count=$final_count" >> "$GITHUB_OUTPUT"
           
-          ksu_type=$(echo "$ksu_options_normalized" | jq -r '.[0].type')
-          ksu_ref=$(echo "$ksu_options_normalized" | jq -r '.[0].hash')
-          
-          if [ "$ksu_type" == "KSUN" ]; then
-            KSU_REPO_OWNER="SukiSU-Ultra"
-            KSU_REPO_NAME="SukiSU-Ultra"
-          else
-            KSU_REPO_OWNER="tiann"
-            KSU_REPO_NAME="KernelSU"
-          fi
-          
-          HEAD_REF="refs/heads/${ksu_ref}"
-          TAG_REF="refs/tags/${ksu_ref}"
-          
           QUERY='query($owner: String!, $name: String!, $headRef: String!, $tagRef: String!, $objRef: String!) {
             repository(owner: $owner, name: $name) {
               hb: ref(qualifiedName: $headRef) { t: target { ... on Commit { o: oid } } }
@@ -281,84 +295,68 @@ jobs:
               ho: object(expression: $objRef) { ... on Commit { o: oid } }
             }
           }'
-          
-          MAX_RETRIES=3
-          RETRY_COUNT=0
-          RETRY_DELAY=5 # Seconds to wait between retries
-          
-          echo "Resolving $ksu_type hash ($ksu_ref)..."
-          
-          until [ $RETRY_COUNT -ge $MAX_RETRIES ]; do
-            RESULT=$(gh api graphql -f query="$QUERY" -f owner="$KSU_REPO_OWNER" -f name="$KSU_REPO_NAME" -f headRef="$HEAD_REF" -f tagRef="$TAG_REF" -f objRef="$ksu_ref" 2>/dev/null)
-            EXIT_CODE=$?
-            
-            if [ $EXIT_CODE -eq 0 ] && [ ! -z "$RESULT" ]; then
-              echo " API Success"
-              break
-            fi
-            
-            RETRY_COUNT=$((RETRY_COUNT + 1))
-            echo "::warning::API failed (Attempt $RETRY_COUNT/$MAX_RETRIES). Retrying in ${RETRY_DELAY}s..."
-            sleep $RETRY_DELAY
-          done
-          
-          if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
-            echo "::error::GitHub API unreachable. Cannot validate $ksu_ref"
-            exit 1
-          fi
-          
-          resolved_sha=$(echo "$RESULT" | jq -r '.data.repository | (.hb.t.o // .ht.t.o // .ho.o // "unknown")')
-          
-          if [ "$resolved_sha" == "unknown" ]; then
-            echo "::error::Ref/Hash '$ksu_ref' does not exist in $KSU_REPO_OWNER/$KSU_REPO_NAME"
-            exit 1
-          fi
-          
-          echo " Resolved: $ksu_type/$ksu_ref -> $resolved_sha"
-          echo "ksu_resolved_hash=$resolved_sha" >> "$GITHUB_OUTPUT"
-          
-          # Per-config ksu_hash overrides are resolved here too, so a bad ref
-          # fails in seconds instead of after a full kernel build.
-          mapfile -t extra_ksu_refs < <(echo "$merged_matrix" | jq -r --arg base "$ksu_ref" '
-            [ .[] | .ksu_hash // empty | select(. != $base) ] | unique | .[]')
 
-          declare -A ksu_extra_hashes
-          for extra in "${extra_ksu_refs[@]}"; do
-            echo "Resolving per-config ksu_hash ($extra)..."
-            extra_sha=""
+          MAX_RETRIES=3
+          RETRY_DELAY=5
+
+          ksu_repo_for_type() {
+            case "$1" in
+              SUKISU) echo "SukiSU-Ultra SukiSU-Ultra" ;;
+              KSUN)   echo "KernelSU-Next KernelSU-Next" ;;
+              KSU)    echo "tiann KernelSU" ;;
+              *)      echo "::error::Unknown ksu_type '$1'" >&2; exit 1 ;;
+            esac
+          }
+
+          mapfile -t ksu_pairs < <(echo "$merged_matrix" | jq -r '
+            [ .[] | "\(.ksu_type)|\(.ksu_hash)" ] | unique | .[]')
+
+          declare -A ksu_resolved_map
+          first_resolved_sha=""
+
+          for pair in "${ksu_pairs[@]}"; do
+            ktype="${pair%%|*}"
+            kref="${pair#*|}"
+            read -r KSU_REPO_OWNER KSU_REPO_NAME < <(ksu_repo_for_type "$ktype")
+            echo "Resolving $ktype hash ($kref) in $KSU_REPO_OWNER/$KSU_REPO_NAME..."
+
             attempt=0
+            resolved_sha=""
             while [ "$attempt" -lt "$MAX_RETRIES" ]; do
-              extra_result=$(gh api graphql -f query="$QUERY" \
+              RESULT=$(gh api graphql -f query="$QUERY" \
                 -f owner="$KSU_REPO_OWNER" -f name="$KSU_REPO_NAME" \
-                -f headRef="refs/heads/${extra}" -f tagRef="refs/tags/${extra}" \
-                -f objRef="$extra" 2>/dev/null) || extra_result=""
-              if [ -n "$extra_result" ]; then
-                extra_sha=$(echo "$extra_result" | jq -r '.data.repository | (.hb.t.o // .ht.t.o // .ho.o // "unknown")')
-                [ "$extra_sha" != "unknown" ] && break
-                extra_sha=""
+                -f headRef="refs/heads/${kref}" -f tagRef="refs/tags/${kref}" \
+                -f objRef="$kref" 2>/dev/null) || RESULT=""
+              if [ -n "$RESULT" ]; then
+                resolved_sha=$(echo "$RESULT" | jq -r '.data.repository | (.hb.t.o // .ht.t.o // .ho.o // "unknown")')
+                [ "$resolved_sha" != "unknown" ] && break
+                resolved_sha=""
               fi
               attempt=$((attempt + 1))
-              echo "::warning::API failed for ksu_hash '$extra' (Attempt $attempt/$MAX_RETRIES). Retrying in ${RETRY_DELAY}s..."
+              echo "::warning::API failed for $ktype/$kref (Attempt $attempt/$MAX_RETRIES). Retrying in ${RETRY_DELAY}s..."
               sleep "$RETRY_DELAY"
             done
-            if [ -z "$extra_sha" ]; then
-              echo "::error::Per-config ksu_hash '$extra' does not exist in $KSU_REPO_OWNER/$KSU_REPO_NAME"
+
+            if [ -z "$resolved_sha" ]; then
+              echo "::error::Ref/Hash '$kref' does not exist in $KSU_REPO_OWNER/$KSU_REPO_NAME"
               exit 1
             fi
-            ksu_extra_hashes["$extra"]="$extra_sha"
-            echo " Resolved: ksu_hash/$extra -> $extra_sha"
+
+            ksu_resolved_map["$pair"]="$resolved_sha"
+            [ -n "$first_resolved_sha" ] || first_resolved_sha="$resolved_sha"
+            echo " Resolved: $ktype/$kref -> $resolved_sha"
           done
 
-          ksu_extra_json=$(for k in "${!ksu_extra_hashes[@]}"; do
-            printf '%s\t%s\n' "$k" "${ksu_extra_hashes[$k]}"
+          echo "ksu_resolved_hash=${first_resolved_sha:-unknown}" >> "$GITHUB_OUTPUT"
+
+          ksu_resolved_json=$(for k in "${!ksu_resolved_map[@]}"; do
+            printf '%s\t%s\n' "$k" "${ksu_resolved_map[$k]}"
           done | jq -R -s 'split("\n") | map(select(length > 0) | split("\t") | {(.[0]): .[1]}) | add // {}')
 
           # Inject ksu_resolved_hash into each device in the matrix
           merged_matrix=$(echo "$merged_matrix" | jq \
-            --arg resolved_sha "$resolved_sha" \
-            --arg ksu_ref "$ksu_ref" \
-            --argjson extra "$ksu_extra_json" \
-            'map(.ksu_resolved_hash = (if .ksu_hash == $ksu_ref then $resolved_sha else ($extra[.ksu_hash] // "unknown") end))')
+            --argjson rmap "$ksu_resolved_json" \
+            'map(.ksu_resolved_hash = ($rmap["\(.ksu_type)|\(.ksu_hash)"] // "unknown"))')
           
           # SUSFS hash fetch
           SUSFS_REPO="https://gitlab.com/simonpunk/susfs4ksu.git"
@@ -566,16 +564,9 @@ jobs:
 
       - name: Build plan summary
         run: |
-          ksu_type="${{ fromJSON(steps.set-matrix.outputs.ksu_options_normalized)[0].type }}"
-          ksu_ref="${{ fromJSON(steps.set-matrix.outputs.ksu_options_normalized)[0].hash }}"
-          
-          ksu_display=""
-          if [ "$ksu_type" = "KSUN" ] || [ "$ksu_type" = "KSU" ]; then
-            if [[ "$ksu_ref" =~ ^[0-9a-f]{40}$ ]]; then
-              ksu_display+=" \`$ksu_type\`, \`$ksu_ref\`"
-            else
-              ksu_display+=" \`$ksu_type\`, \`$ksu_ref\` (\`${{ steps.set-matrix.outputs.ksu_resolved_hash }}\`)"
-            fi
+          ksu_display=$(jq -r '[.[] | "`\(.ksu_type)` (`\(.ksu_hash)` -> `\(.ksu_resolved_hash[0:8])`)"] | unique | join(", ")' matrix.json 2>/dev/null || true)
+          if [ -z "$ksu_display" ] || [ "$ksu_display" = "null" ]; then
+            ksu_display=$(echo '${{ steps.set-matrix.outputs.ksu_options_normalized }}' | jq -r '[.[] | "`\(.type)` (`\(.hash)`)"] | join(", ")')
           fi
           
           build_ts_input="${{ inputs.build_timestamp }}"
@@ -719,7 +710,7 @@ jobs:
           if-no-files-found: warn
 
   build-A16:
-    name: build-A16 (${{ matrix.model }}, ${{ matrix.ksu_type == 'KSUN' && 'SukiSU-Ultra' || matrix.ksu_type }})
+    name: build-A16 (${{ matrix.model }}, ${{ matrix.ksu_type == 'SUKISU' && 'SukiSU-Ultra' || (matrix.ksu_type == 'KSUN' && 'KernelSU-Next' || matrix.ksu_type) }})
     needs: [set-op-model, prepare_ccache, mirror_toolchain]
     if: |
       !cancelled() &&
@@ -773,6 +764,8 @@ jobs:
           ksu_mode: ${{ inputs.ksu_mode }}
           lto_override: ${{ inputs.lto_override }}
           release_tag: ${{ needs.set-op-model.outputs.release_tag }}
+          autofdo_profile_url: ${{ inputs.autofdo_profile_url }}
+          autofdo_profile_sha256: ${{ inputs.autofdo_profile_sha256 }}
 
   trigger-release:
     needs: [set-op-model, build-A16]
@@ -784,7 +777,7 @@ jobs:
       REPO_NAME: ${{ github.event.repository.name }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       SUSFS_BASE_VERSION: ${{ needs.set-op-model.outputs.susfs_base_version }}
-      RELEASE_NAME: 'OnePlus 15 (ColorOS 17) Kernel With SukiSU-Ultra & SUSFS ${{ needs.set-op-model.outputs.susfs_base_version }}'
+      RELEASE_NAME: 'OnePlus 15 (ColorOS 17) Kernel With SukiSU-Ultra, KernelSU-Next & SUSFS ${{ needs.set-op-model.outputs.susfs_base_version }}'
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -849,7 +842,7 @@ jobs:
             [ -f "$zip" ] || continue
             name=$(basename "$zip" .zip)
             zip_rev=""
-            if [[ "$name" =~ [_-]r([0-9]+)$ ]]; then
+            if [[ "$name" =~ [_-]r([0-9]+)([_-]|$) ]]; then
               zip_rev="-r${BASH_REMATCH[1]}"
             fi
             if [ -z "$zip_rev" ]; then
@@ -918,9 +911,24 @@ jobs:
                   zsha = subprocess.check_output(["sha256sum", str(zip_path)], text=True).split()[0]
               builds.append((data, p.name, zsha or "unavailable"))
 
-          ksu_ver_global = builds[0][0].get("ksu", {}).get("version") or "unknown" if builds else "unknown"
+          ksu_summaries = []
+          for data, _, _ in builds:
+              k = data.get("ksu", {})
+              kvar = k.get("variant") or ("SukiSU-Ultra" if k.get("type") == "SUKISU" else ("KernelSU-Next" if k.get("type") == "KSUN" else k.get("type", "KSU")))
+              kver = k.get("version") or "unknown"
+              entry = f"{kvar} {kver}"
+              if entry not in ksu_summaries:
+                  ksu_summaries.append(entry)
+          ksu_summary_str = " & ".join(ksu_summaries) if ksu_summaries else "SukiSU-Ultra / KernelSU-Next"
           now_utc = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-          release_title = f"OnePlus 15 (ColorOS 17) Kernel With SukiSU-Ultra & SUSFS {susfs_base}"
+          variant_names = []
+          for data, _, _ in builds:
+              k = data.get("ksu", {})
+              kvar = k.get("variant") or ("SukiSU-Ultra" if k.get("type") == "SUKISU" else ("KernelSU-Next" if k.get("type") == "KSUN" else k.get("type", "KSU")))
+              if kvar not in variant_names:
+                  variant_names.append(kvar)
+          title_variants = " / ".join(variant_names) if variant_names else "SukiSU-Ultra & KernelSU-Next"
+          release_title = f"OnePlus 15 (ColorOS 17) Kernel With {title_variants} & SUSFS {susfs_base}"
 
           with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env_f:
               env_f.write(f"RELEASE_TITLE={release_title}\n")
@@ -928,7 +936,7 @@ jobs:
           lines = [
               f"# OnePlus 15 (ColorOS 17) Kernel {new_tag}",
               "",
-              f"Built: {now_utc} | Run: `{run_id}` | SukiSU-Ultra {ksu_ver_global} | SUSFS {susfs_base}",
+              f"Built: {now_utc} | Run: `{run_id}` | {ksu_summary_str} | SUSFS {susfs_base}",
               "",
               f"## Built zips ({len(builds) or len(zip_files)})",
               "",
@@ -938,17 +946,22 @@ jobs:
               dev = data.get("device", {})
               kern = data.get("kernel", {})
               art = data.get("artifact", {})
+              k = data.get("ksu", {})
+              kvar = k.get("variant") or ("SukiSU-Ultra" if k.get("type") == "SUKISU" else ("KernelSU-Next" if k.get("type") == "KSUN" else k.get("type", "KSU")))
+              kver = k.get("version") or "unknown"
               zname = art.get("zip_name", "")
               zurl = f"https://github.com/{repo_owner}/{repo_name}/releases/download/{new_tag}/{zname}"
-              lines.append(f"- [`{zname}`]({zurl}) - {dev.get('model')}, {dev.get('os_version')}, kernel `{kern.get('full_version')}`")
+              lines.append(f"- [`{zname}`]({zurl}) - {dev.get('model')}, {dev.get('os_version')}, kernel `{kern.get('full_version')}`, **{kvar}** `{kver}`")
               lines.append(f"  - `sha256: {zsha}`")
 
           lines.extend(["", "## Tested on hardware", ""])
-          tested_rows = [
-              (m.get("model"), m.get("os_version"), m.get("tested"))
-              for m in matrix_data
-              if m.get("tested")
-          ]
+          seen_tested = set()
+          tested_rows = []
+          for m in matrix_data:
+              key = (m.get("model"), m.get("os_version"))
+              if m.get("tested") and key not in seen_tested:
+                  seen_tested.add(key)
+                  tested_rows.append((m.get("model"), m.get("os_version"), m.get("tested")))
           if tested_rows:
               lines.extend(["| Profile | OS | What was verified |", "|---|---|---|"])
               for m_model, m_os, m_note in tested_rows:
@@ -958,7 +971,7 @@ jobs:
           lines.extend([
               "## Build provenance",
               "",
-              "Every zip ships a `build-info.json` recording the exact kernel source commit, the SUSFS and SukiSU-Ultra revisions, the toolchain, and the image/zip checksums.",
+              "Every zip ships a `build-info.json` recording the exact kernel source commit, the SUSFS and root variant revisions, the toolchain, and the image/zip checksums.",
               "",
           ])
           for _, info_name, _ in builds:
@@ -969,9 +982,9 @@ jobs:
               "",
               "## Kernel contents",
               "",
-              f"- [SukiSU-Ultra](https://github.com/SukiSU-Ultra/SukiSU-Ultra) {ksu_ver_global}, compiled `{ksu_mode}`. Install the manager APK from its [releases](https://github.com/SukiSU-Ultra/SukiSU-Ultra/releases).",
+              f"- Root variants (`{ksu_mode}`): [SukiSU-Ultra](https://github.com/SukiSU-Ultra/SukiSU-Ultra) (`_SukiSU.zip`) and [KernelSU-Next](https://github.com/KernelSU-Next/KernelSU-Next) (`_KSUN.zip`). Install the matching manager APK from [SukiSU-Ultra releases](https://github.com/SukiSU-Ultra/SukiSU-Ultra/releases) or [KernelSU-Next releases](https://github.com/KernelSU-Next/KernelSU-Next/releases).",
               f"- [SUSFS](https://gitlab.com/simonpunk/susfs4ksu) {susfs_base} - magic mount, SUS_PATH / SUS_MOUNT / SUS_KSTAT / SUS_MAP, uname & cmdline spoofing, open redirect.",
-              "- Scheduler, memory & network: BORE, ADIOS, DAMON, BBR/BBR3, TTL, IP set, Unicode bypass, and 6.12 CVE backports.",
+              "- Scheduler, memory, power & network: BORE, ADIOS, DAMON, curated suspend/wakeup optimisations (`opt`), NTSync, Droidspaces (`SYSVIPC` kABI-safe + ghost task), BBR/BBR3, TTL, IP set, Unicode bypass, and 6.12 CVE backports.",
               "- [Baseband Guard](https://github.com/vc-teahouse/Baseband-guard) stays disabled, so [EFISP/bootloader-spoof](https://xdaforums.com/t/efisp-root-gbl-chainload-efisp-chainloader-for-oneplus-15.4786301/) chains keep working.",
               "",
               "## Verifying your download",
