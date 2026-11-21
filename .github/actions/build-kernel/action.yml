@@ -3179,68 +3179,28 @@ runs:
         fi
         
         ZIP_MODEL=$(echo "$OP_MODEL" | sed 's/-[0-9]\+\.[0-9]\+\.[0-9]\+$//')
-        SOC_TAG=$(printf '%s' "${OP_BRANCH##*/}" | tr '[:lower:]' '[:upper:]')
-        KSU_MODE_CHAR=$([ "${KSUMODE:-lkm}" = "lkm" ] && echo "L" || echo "B")
-        KSU_NUM=$(printf '%s' "${KSUVER:-0}" | sed 's/[^0-9A-Za-z.]//g')
-        [ -n "$KSU_NUM" ] || KSU_NUM="0"
-
-        SUSFS_TOKEN=""
-        if [ "${{ env.OP_SUSFS }}" = true ]; then
-          sus_compact=$(printf '%s' "${SUSVER:-0}" | sed 's/^v//; s/\.//g')
-          SUSFS_TOKEN="-SUSFS${sus_compact}"
-        fi
-
-        subsys_parts=()
-        [ "${OP_BORE:-false}" = "true" ] && subsys_parts+=("BORE")
-        [ "${OP_ADIOS:-false}" = "true" ] && subsys_parts+=("ADIOS")
-        [ "${OP_HMBIRD:-false}" = "true" ] && subsys_parts+=("HMBIRD")
-        [ "${OP_DAMON:-false}" = "true" ] && subsys_parts+=("DAMON")
-        [ "${OP_KASAN:-false}" = "true" ] && subsys_parts+=("KASANhw") || subsys_parts+=("NoKASAN")
-        SUBSYS_TAG=$(IFS=-; echo "${subsys_parts[*]}")
-
-        cl_major=$(printf '%s' "${CLANG_VERSION:-}" | sed -n 's/.*clang version \([0-9]\+\).*/\1/p')
-        [ -n "$cl_major" ] || cl_major="X"
-        case "${EFFECTIVE_LTO:-${OP_LTO:-none}}" in
-          none) lto_code="LTOn" ;;
-          thin) lto_code="LTOt" ;;
-          full) lto_code="LTOf" ;;
-          *) lto_code="LTOx" ;;
-        esac
-        cc_parts=("CL${cl_major}" "${{ inputs.optimize_level }}" "${lto_code}")
-        [ "${OP_AUTOFDO:-false}" = "true" ] && cc_parts+=("AFDO")
-        [ "${OP_MLGO:-false}" = "true" ] && cc_parts+=("MLGO")
-        TOOLCHAIN_TAG=$(IFS=-; echo "${cc_parts[*]}")
-
-        net_parts=()
-        if [ "${OP_BBR3:-false}" = "true" ]; then
-          net_parts+=("BBR3")
-        elif [ "${OP_BBR:-false}" = "true" ]; then
-          net_parts+=("BBR")
-        fi
-        [ "${OP_TTL:-false}" = "true" ] && net_parts+=("TTL")
-        [ "${OP_IP_SET:-false}" = "true" ] && net_parts+=("IPSET")
-        [ "${OP_UNICODE:-false}" = "true" ] && net_parts+=("UNI")
-        [ "${OP_OPT:-false}" = "true" ] && net_parts+=("OPT")
-        [ "${OP_DS:-false}" = "true" ] && net_parts+=("DS")
-        [ "${OP_NTSYNC:-false}" = "true" ] && net_parts+=("NTS")
-        [ "${OP_BBG:-false}" = "true" ] && net_parts+=("BBG") || net_parts+=("NoBBG")
-        NET_TAG=$(IFS=-; echo "${net_parts[*]}")
-
-        FEATURE_TAG="${SUBSYS_TAG}_${TOOLCHAIN_TAG}_${NET_TAG}"
-
+        FEATURE_TAG="${OP_BORE:-false}/${OP_ADIOS:-false}/${OP_DAMON:-false}/KASAN:${OP_KASAN:-false}/${{ inputs.optimize_level }}/LTO:${EFFECTIVE_LTO:-${OP_LTO:-none}}/AFDO:${OP_AUTOFDO:-false}/MLGO:${OP_MLGO:-false}/BBR3:${OP_BBR3:-false}/BBG:${OP_BBG:-false}"
         ZIP_REV=""
         if [ -n "${OP_RELEASE_TAG:-}" ]; then
           rev="${OP_RELEASE_TAG##*-r}"
           if [ "$rev" != "$OP_RELEASE_TAG" ] && [[ "$rev" =~ ^[0-9]+$ ]]; then
-            ZIP_REV="_r$rev"
+            ZIP_REV="-r$rev"
           fi
         fi
-        [ -n "$ZIP_REV" ] || ZIP_REV="_b${GITHUB_RUN_NUMBER:-0}"
-
-        ZIP_BASE="${ZIP_MODEL}_${SOC_TAG}_${TKERNEL_VER}-${OP_OS_VERSION}_KSU${KSU_NUM}${KSU_MODE_CHAR}${SUSFS_TOKEN}_${FEATURE_TAG}${ZIP_REV}"
-        ZIP_NAME="${ZIP_BASE}.zip"
+        if [ "${KSUMODE:-lkm}" = "lkm" ]; then
+          if [ "${{ env.OP_SUSFS }}" = true ]; then
+            ZIP_NAME="${ZIP_MODEL}_${KERNEL_FULL_VER}-SuSFS_${SUSVER:-unknown}${ZIP_REV}_LKM.zip"
+          else
+            ZIP_NAME="${ZIP_MODEL}_${KERNEL_FULL_VER}${ZIP_REV}_LKM.zip"
+          fi
+        else
+          if [ "${{ env.OP_SUSFS }}" = true ]; then
+            ZIP_NAME="${ZIP_MODEL}_${KERNEL_FULL_VER}-SuSFS_${SUSVER:-unknown}${ZIP_REV}.zip"
+          else
+            ZIP_NAME="${ZIP_MODEL}_${KERNEL_FULL_VER}${ZIP_REV}.zip"
+          fi
+        fi
         echo "FEATURE_TAG=$FEATURE_TAG" >> "$GITHUB_ENV"
-        echo "ZIP_BASE=$ZIP_BASE" >> "$GITHUB_ENV"
         mkdir -p "$ARTIFACTS_FOLDER"
         
         echo "Creating flashable ZIP: $ZIP_NAME"
@@ -3318,7 +3278,7 @@ runs:
         set -euo pipefail
         echo "::group::Write build info"
         WRITER="${{ github.action_path }}/../../../scripts/build-info.py"
-        OUT="$GITHUB_WORKSPACE/${ZIP_BASE:-${OP_MODEL}_${OP_OS_VERSION}}_build-info.json"
+        OUT="$GITHUB_WORKSPACE/${OP_MODEL}_${OP_OS_VERSION}_build-info.json"
 
         if [ ! -f "$WRITER" ]; then
           echo "::error::build-info writer not found at $WRITER"
@@ -3559,7 +3519,7 @@ runs:
       if: ${{ always() && steps.build_info.conclusion == 'success' }}
       uses: actions/upload-artifact@v7
       with:
-        name: ${{ env.ZIP_BASE || format('{0}_{1}', env.OP_MODEL, env.OP_OS_VERSION) }}_build_info
+        name: ${{ env.OP_MODEL }}_${{ env.OP_OS_VERSION }}_build_info
         path: ${{ steps.build_info.outputs.build_info_path }}
         archive: false
         retention-days: 90

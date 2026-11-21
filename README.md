@@ -14,22 +14,12 @@ Custom `android16-6.12.69` kernel for the OnePlus 15 (`SM8850`) running ColorOS 
 
 Built and booted on ColorOS 17 (`OP15-COS17`). See [docs](docs/README.md) for configuration notes and the patch list.
 
-## Archive Naming
+## Releases
 
-Release archives encode the build options directly in the filename:
+Each release is tagged by SUSFS version and revision (for example `v2.3.0-r1`) and ships:
 
-```text
-OP15-COS17_SM8850_6.12.69-A16_KSU34692B-SUSFS230_BORE-ADIOS-DAMON-KASANhw_CL20-O2-LTOn-AFDO-MLGO_BBR3-TTL-IPSET-UNI-NoBBG_r1.zip
-```
-
-- `OP15-COS17_SM8850_6.12.69-A16`: profile, SoC, kernel version, OS target
-- `KSU<ver>B|L-SUSFS<ver>`: SukiSU-Ultra version/mode (`B` builtin, `L` LKM) and SUSFS version
-- `BORE-ADIOS-DAMON-KASANhw`: active schedulers and vendor KMI ABI parity (`NoKASAN` if off)
-- `CL<ver>-O2|O3-LTOn|LTOt|LTOf-AFDO-MLGO`: toolchain, optimization, LTO, AutoFDO, MLGO
-- `BBR3|BBR-TTL-IPSET-UNI-NoBBG|BBG`: networking toggles and Baseband Guard state
-- `_r<n>`: release revision matching the tag (`_b<run>` on manual artifact-only builds)
-
-Each release zip ships alongside a matching `_build-info.json` and SHA-256 checksums.
+- `OP15-COS17_android16-6.12.69-SuSFS_v2.3.0-r1.zip` (`_LKM.zip` when built in LKM mode)
+- `OP15-COS17_A16_build-info.json` with source revisions, toolchain info, and SHA-256 checksums
 
 ## Flashing
 

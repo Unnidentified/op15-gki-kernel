@@ -225,8 +225,8 @@ jobs:
               --optimization O2 --lto none \
               --kasan true --bbg false --bbr3 true \
               --autofdo true --mlgo true --bore true --adios true --damon true \
-              --feature-tag BORE-ADIOS-DAMON-KASANhw_CL20-O2-LTOn-AFDO-MLGO_BBR3-NoBBG \
-              --release-tag v6.12.69-OP15-COS17-SUSFS2.3.0-KSUB-r1 \
+              --feature-tag true/true/true/KASAN:true/O2/LTO:none/AFDO:true/MLGO:true/BBR3:true/BBG:false \
+              --release-tag v2.3.0-r1 \
               --zip /tmp/fake.zip > /dev/null
             python3 - <<'PY'
           import json
@@ -237,7 +237,7 @@ jobs:
           f = data["features"]
           for key in ("kasan_hw_tags", "bbg", "bbr3", "bore", "adios", "damon", "autofdo", "mlgo", "lto", "optimization", "feature_tag"):
               assert key in f, f"missing feature key: {key}"
-          assert data["artifact"]["release_tag"] == "v6.12.69-OP15-COS17-SUSFS2.3.0-KSUB-r1"
+          assert data["artifact"]["release_tag"] == "v2.3.0-r1"
           PY
             count=$((count + 1))
           done
