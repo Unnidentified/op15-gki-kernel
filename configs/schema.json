@@ -135,6 +135,15 @@
       "type": "boolean",
       "description": "Clang AutoFDO using Google's kernel.afdo profile for android16-6.12. gki_defconfig already sets CONFIG_AUTOFDO_CLANG=y, but without a profile that only adds unused debug info; this supplies CLANG_AUTOFDO_PROFILE. The profile is pinned by commit and verified by sha256, and a failed download or hash mismatch aborts the build rather than silently producing a kernel without it. 6.12 only."
     },
+    "autofdo_url": {
+      "type": "string",
+      "description": "Optional custom kernel.afdo download URL override. Empty or omitted uses the pinned AOSP android16-6.12 profile."
+    },
+    "autofdo_sha256": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{64})?$",
+      "description": "Optional SHA-256 checksum for a custom autofdo_url override."
+    },
     "damon": {
       "type": "boolean",
       "description": "DAMON data access monitor, as shipped by Android 17's GKI. Builds DAMON_RECLAIM and DAMON_LRU_SORT but starts nothing: kdamond only runs when a userspace policy enables it, so the cost when unused is code size only."

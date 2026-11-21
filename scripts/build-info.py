@@ -96,6 +96,7 @@ def build_parser():
 
     ksu = parser.add_argument_group("ksu")
     ksu.add_argument("--ksu-type", default="")
+    ksu.add_argument("--ksu-variant", default="")
     ksu.add_argument("--ksu-version", default="")
     ksu.add_argument("--ksu-ref", default="")
     ksu.add_argument("--ksu-commit", default="")
@@ -115,6 +116,9 @@ def build_parser():
     features.add_argument("--kasan", default="")
     features.add_argument("--bbg", default="")
     features.add_argument("--bbr3", default="")
+    features.add_argument("--opt", default="")
+    features.add_argument("--ds", default="")
+    features.add_argument("--ntsync", default="")
     features.add_argument("--feature-tag", default="", help="encoded feature identifier string")
     features.add_argument("--patchset-commit", default="", help="commit of the external kernel_patches repo")
 
@@ -184,6 +188,11 @@ def main(argv=None):
         },
         "ksu": {
             "type": args.ksu_type,
+            "variant": args.ksu_variant or (
+                "SukiSU-Ultra" if args.ksu_type == "SUKISU" else (
+                    "KernelSU-Next" if args.ksu_type == "KSUN" else args.ksu_type
+                )
+            ),
             "version": args.ksu_version,
             "ref": args.ksu_ref,
             "commit": args.ksu_commit,
@@ -202,6 +211,9 @@ def main(argv=None):
             "kasan_hw_tags": args.kasan == "true",
             "bbg": args.bbg == "true",
             "bbr3": args.bbr3 == "true",
+            "opt": args.opt == "true",
+            "ds": args.ds == "true",
+            "ntsync": args.ntsync == "true",
             "patchset_commit": args.patchset_commit,
         },
         "artifact": {

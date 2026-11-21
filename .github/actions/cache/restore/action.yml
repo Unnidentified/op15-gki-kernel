@@ -14,7 +14,16 @@ inputs:
     default: 'general-cache'
   github_token:
     description: 'GitHub Token'
-    required: true
+    required: false
+    default: ''
+  restore_keys:
+    description: 'Newline-separated fallback key prefixes'
+    required: false
+    default: ''
+  debug:
+    description: 'Enable debug logging'
+    required: false
+    default: 'false'
 
 outputs:
   cache-hit:
@@ -28,7 +37,8 @@ runs:
       id: restore
       shell: bash
       env:
-        GH_TOKEN: ${{ inputs.github_token }}
+        GH_TOKEN: ${{ inputs.github_token || github.token }}
+        RESTORE_KEYS: ${{ inputs.restore_keys }}
       run: |
         set -euo pipefail
         
@@ -38,8 +48,6 @@ runs:
         
         # Use bucket in tag name to avoid collision if keys are same across buckets
         TAG_NAME="${BUCKET}"
-        ARCHIVE_NAME="cache-${CACHE_KEY}.tar.zst"
-        ARCHIVE_NAME_UNCOMPRESSED="cache-${CACHE_KEY}.tar"
         
         echo "::group::Restoring Cache: $CACHE_KEY from $BUCKET"
         
@@ -51,19 +59,37 @@ runs:
           exit 0
         fi
         
-        # 2. Download assets using aria2c for speed
+        # 2. Download assets
         echo "Fetching asset list..."
-        # We look for the specific archive in the bucket
         ASSETS=$(gh api repos/${{ github.repository }}/releases/tags/"$TAG_NAME" --jq '.assets[].name')
         
-        if ! echo "$ASSETS" | grep -q "^cache-${CACHE_KEY}\.tar"; then
+        MATCHED_KEY=""
+        if echo "$ASSETS" | grep -q "^cache-${CACHE_KEY}\.tar"; then
+          MATCHED_KEY="$CACHE_KEY"
+        elif [ -n "${RESTORE_KEYS:-}" ]; then
+          while IFS= read -r prefix; do
+            prefix=$(echo "$prefix" | xargs)
+            [ -n "$prefix" ] || continue
+            candidate=$(echo "$ASSETS" | sed -n 's/\.part[a-z0-9]*$//; s/\.tar\.zst$//; s/\.tar$//; s/^cache-//p' | grep -F "$prefix" | head -n1 || true)
+            if [ -n "$candidate" ]; then
+              MATCHED_KEY="$candidate"
+              echo "Exact cache key not found; matched fallback key: $MATCHED_KEY (prefix: $prefix)"
+              break
+            fi
+          done <<< "$RESTORE_KEYS"
+        fi
+
+        if [ -z "$MATCHED_KEY" ]; then
           echo "hit=false" >> "$GITHUB_OUTPUT"
           echo "Archive $CACHE_KEY not found in bucket $TAG_NAME."
           echo "::endgroup::"
           exit 0
         fi
+
+        ARCHIVE_NAME="cache-${MATCHED_KEY}.tar.zst"
+        ARCHIVE_NAME_UNCOMPRESSED="cache-${MATCHED_KEY}.tar"
         
-        if echo "$ASSETS" | grep -q "^${ARCHIVE_NAME}$"; then
+        if echo "$ASSETS" | grep -q "^${ARCHIVE_NAME}"; then
           ARCHIVE_TO_DOWNLOAD="$ARCHIVE_NAME"
         else
           ARCHIVE_TO_DOWNLOAD="$ARCHIVE_NAME_UNCOMPRESSED"

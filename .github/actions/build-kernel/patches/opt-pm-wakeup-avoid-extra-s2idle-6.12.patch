@@ -1,0 +1,24 @@
+From: Sultan Alsawaf <sultan@kerneltoast.com>
+Subject: [PATCH] PM / wakeup: avoid redundant s2idle_wake() calls in pm_system_wakeup()
+
+Calling s2idle_wake() once when pm_abort_suspend transitions from 0 to 1
+is sufficient to abort s2idle. Skip redundant wakeup kicks while an abort
+is already pending.
+
+Signed-off-by: Sultan Alsawaf <sultan@kerneltoast.com>
+---
+diff --git a/drivers/base/power/wakeup.c b/drivers/base/power/wakeup.c
+index 79efb19..5600598 100644
+--- a/drivers/base/power/wakeup.c
++++ b/drivers/base/power/wakeup.c
+@@ -941,8 +941,8 @@ EXPORT_SYMBOL_GPL(pm_wakeup_pending);
+ 
+ void pm_system_wakeup(void)
+ {
+-	atomic_inc(&pm_abort_suspend);
+-	s2idle_wake();
++	if (atomic_inc_return_relaxed(&pm_abort_suspend) == 1)
++		s2idle_wake();
+ }
+ EXPORT_SYMBOL_GPL(pm_system_wakeup);
+ 

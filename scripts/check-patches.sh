@@ -29,12 +29,16 @@ fail() { printf '::error::%s\n' "$*" >&2; exit 1; }
 j() { jq -r "$1" "$config"; }
 
 model=$(j .model)
+branch=$(j '.branch // empty')
 android=$(j .android_version)
 kernel=$(j .kernel_version)
 manifest=$(j .manifest)
 susfs=$(j '.susfs // false')
 bore=$(j '.bore // false')
 adios=$(j '.adios // false')
+opt=$(j '.opt // false')
+ds=$(j '.ds // false')
+ntsync=$(j '.ntsync // false')
 susfs_pin=$(j '.susfs_hash // empty')
 blocked=$(j '.blocked // empty')
 
@@ -150,6 +154,14 @@ fi
 
 [ "$bore" = "true" ] && add_patch_paths "$patches_dir/bore_6.12.patch"
 [ "$adios" = "true" ] && add_patch_paths "$patches_dir/adios_ioscheduler_6.12.patch"
+if [ "$opt" = "true" ] && [ "$kernel" = "6.12" ]; then
+  for p in \
+    "$patches_dir/opt-alarmtimer-minimize-wakeup-time-6.12.patch" \
+    "$patches_dir/opt-pm-wakeup-avoid-extra-s2idle-6.12.patch" \
+    "$patches_dir/opt-pci-pme-timeout-4000-6.12.patch"; do
+    add_patch_paths "$p"
+  done
+fi
 add_patch_paths "$patches_dir/susfs-fix-task_mmu-sus-map-gki-6.12.patch"
 if [ "$kernel" = "6.12" ]; then
   add_patch_paths "$patches_dir/sukisu-lsm-count-6.12.patch"
@@ -161,6 +173,50 @@ if [ "$kernel" = "6.12" ]; then
   for p in "$patches_dir"/cve-*-6.12.patch; do
     add_patch_paths "$p"
   done
+fi
+
+wild_patches_dir="$workdir/kernel_patches"
+if [ "$ds" = "true" ] || [ "$ntsync" = "true" ]; then
+  log "WildKernels/kernel_patches (sparse: common/droidspaces, common/ntsync)"
+  git init -q "$wild_patches_dir"
+  git -C "$wild_patches_dir" remote add origin https://github.com/WildKernels/kernel_patches.git
+  git -C "$wild_patches_dir" config core.sparseCheckout true
+  git -C "$wild_patches_dir" sparse-checkout init --no-cone
+  printf '%s\n' 'common/droidspaces/*' 'common/ntsync/*' \
+    | git -C "$wild_patches_dir" sparse-checkout set --stdin
+  git -C "$wild_patches_dir" fetch -q --depth 1 --filter=blob:none origin main \
+    || fail "cannot fetch WildKernels/kernel_patches"
+  git -C "$wild_patches_dir" checkout -q FETCH_HEAD
+fi
+
+ds_sysvipc_patch=""
+ds_ghost_patch=""
+if [ "$ds" = "true" ]; then
+  case "$branch" in
+    wild/sm8850|wild/sm8845)
+      ds_sysvipc_patch="$wild_patches_dir/common/droidspaces/fix_sysvipc_kabi_a16-6.12.patch"
+      ;;
+    wild/sm8550|wild/sm7550)
+      ds_sysvipc_patch="$wild_patches_dir/common/droidspaces/fix_sysvipc_kabi_1_2_3.patch"
+      ;;
+    *)
+      ds_sysvipc_patch="$wild_patches_dir/common/droidspaces/fix_sysvipc_kabi_6_7_8.patch"
+      ;;
+  esac
+  ds_ghost_patch="$wild_patches_dir/common/droidspaces/0001-Return-ghost-task-if-task-is-null-and-is-requested-b.patch"
+  add_patch_paths "$ds_sysvipc_patch"
+  add_patch_paths "$ds_ghost_patch"
+fi
+
+ntsync_compat_patch=""
+ntsync_base_patch=""
+if [ "$ntsync" = "true" ]; then
+  gki_key="${android}-${kernel}"
+  ntsync_compat_patch="$wild_patches_dir/common/ntsync/ntsync_compat_${gki_key}.patch"
+  ntsync_base_patch="$wild_patches_dir/common/ntsync/ntsync_base.patch"
+  add_patch_paths "$ntsync_compat_patch"
+  add_patch_paths "$ntsync_base_patch"
+  printf '%s\n' 'include/uapi/linux/ntsync.h' 'drivers/misc/ntsync.c' >> "$paths_file"
 fi
 
 sort -u "$paths_file" -o "$paths_file"
@@ -268,6 +324,33 @@ if [ "$kernel" = "6.12" ]; then
   done
 else
   log "CVE backports: no patch for $kernel, skipped"
+fi
+
+if [ "$opt" = "true" ]; then
+  case "$kernel" in
+    6.12)
+      for p in \
+        "$patches_dir/opt-alarmtimer-minimize-wakeup-time-6.12.patch" \
+        "$patches_dir/opt-pm-wakeup-avoid-extra-s2idle-6.12.patch" \
+        "$patches_dir/opt-pci-pme-timeout-4000-6.12.patch"; do
+        apply "opt $(basename "$p" .patch)" "$p"
+      done
+      ;;
+    *) log "opt: no local patches for $kernel, skipped" ;;
+  esac
+fi
+
+if [ "$ntsync" = "true" ]; then
+  if [ "$android" = "android16" ] && [ "$kernel" = "6.12" ]; then
+    rm -f "$kernel_dir/include/uapi/linux/ntsync.h" "$kernel_dir/drivers/misc/ntsync.c"
+  fi
+  apply "NTSync compat" "$ntsync_compat_patch"
+  apply "NTSync base" "$ntsync_base_patch"
+fi
+
+if [ "$ds" = "true" ]; then
+  apply "Droidspaces SYSVIPC kABI" "$ds_sysvipc_patch"
+  apply "Droidspaces ghost task" "$ds_ghost_patch"
 fi
 
 # A blocked profile that now applies cleanly means the blocker is gone and the
