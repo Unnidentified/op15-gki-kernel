@@ -1,4 +1,4 @@
-From: oplus-sukisu_kernel maintainers
+From: op15-gki-kernel maintainers
 Subject: [PATCH] sched/bore: allow sub-tick 2 ms base slice on 250 Hz GKI
 
 On GKI android16-6.12 (CONFIG_HZ_250=y, nsecs_per_tick = 4 ms), rounding

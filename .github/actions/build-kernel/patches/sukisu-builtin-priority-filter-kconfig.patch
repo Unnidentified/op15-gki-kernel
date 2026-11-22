@@ -1,4 +1,4 @@
-From: oplus-sukisu_kernel maintainers
+From: op15-gki-kernel maintainers
 Subject: [PATCH] KernelSU: add KSU_SUSFS_PRIORITY_UID_FILTER Kconfig
 
 Companion to sukisu-builtin-priority-filter-stub.patch: the builtin tree

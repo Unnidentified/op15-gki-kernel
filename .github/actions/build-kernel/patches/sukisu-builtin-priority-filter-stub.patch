@@ -1,4 +1,4 @@
-From: oplus-sukisu_kernel maintainers
+From: op15-gki-kernel maintainers
 Subject: [PATCH] KernelSU: guard priority_uid_filter calls behind CMD_SUSFS_SET_PRIORITY_UID_FILTER
 
 susfs_parse_priority_app_strings() and the CMD_SUSFS_SET_PRIORITY_UID_FILTER

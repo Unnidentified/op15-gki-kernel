@@ -1,4 +1,4 @@
-From: oplus-sukisu_kernel maintainers
+From: op15-gki-kernel maintainers
 Subject: [PATCH] dma-buf: bypass per-buffer sysfs stats kobject creation
 
 CONFIG_DMABUF_SYSFS_STATS=y is deprecated upstream because creating and

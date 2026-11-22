@@ -1,4 +1,4 @@
-From: oplus-sukisu_kernel maintainers
+From: op15-gki-kernel maintainers
 Subject: [PATCH] mm: page_alloc: disable default watermark_boost_factor
 
 Mainline's watermark_boost_factor = 15000 triggers aggressive kswapd
