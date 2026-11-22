@@ -1,4 +1,4 @@
-From: oplus-sukisu_kernel maintainers
+From: op15-gki-kernel maintainers
 Subject: [PATCH] KernelSU: pass struct lsm_id to security_add_hooks() on 6.7+
 
 SukiSU-Ultra's builtin branch still calls

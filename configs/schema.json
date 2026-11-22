@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/Unnidentified/oplus-sukisu_kernel/configs/schema.json",
+  "$id": "https://github.com/Unnidentified/op15-gki-kernel/configs/schema.json",
   "title": "OnePlus kernel build profile",
   "description": "One file per buildable device under configs/<aNN>/. Every key is mapped to an OP_<KEY> environment variable by the build action, so adding a key here means adding a consumer in .github/actions/build-kernel/action.yml.",
   "type": "object",
@@ -121,7 +121,7 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 44,
-      "description": "Appended to the kernel release string as LOCALVERSION, so uname -r becomes '<kernel version>-<android_version>-<uname>'. Two distinct uses, chosen deliberately: a short brand string (e.g. SakFi-OP) marks the build visibly; a full stock-style suffix (e.g. 6-g242e1a07f878-ab15865446-4k) makes uname -r indistinguishable from a stock OnePlus kernel. A brand string defeats the spoof, a spoof string hides the brand. LOCALVERSION_AUTO is disabled, so no git hash is appended after it."
+      "description": "Appended to the kernel release string as LOCALVERSION, so uname -r becomes '<kernel version>-<android_version>-<uname>'. Two distinct uses, chosen deliberately: a short brand string (e.g. OP15-COS17) marks the build visibly; a full stock-style suffix (e.g. 6-g242e1a07f878-ab15865446-4k) makes uname -r indistinguishable from a stock OnePlus kernel. A brand string defeats the spoof, a spoof string hides the brand. LOCALVERSION_AUTO is disabled, so no git hash is appended after it."
     },
     "bore": {
       "type": "boolean",

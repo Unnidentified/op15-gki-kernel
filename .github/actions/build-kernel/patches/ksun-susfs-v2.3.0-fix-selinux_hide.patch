@@ -1,4 +1,4 @@
-From: oplus-sukisu_kernel maintainers
+From: op15-gki-kernel maintainers
 Subject: [PATCH] KernelSU-Next: adapt selinux_hide.c for SUSFS v2.3.0 inline hooks
 
 KernelSU-Next dev commit 7ccf6147 added selinux_inode_setxattr_hook using

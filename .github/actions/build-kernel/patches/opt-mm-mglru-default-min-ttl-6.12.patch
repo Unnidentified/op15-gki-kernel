@@ -1,4 +1,4 @@
-From: oplus-sukisu_kernel maintainers
+From: op15-gki-kernel maintainers
 Subject: [PATCH] mm: mglru: default min_ttl_ms to 1000 ms (HZ)
 
 Protect the active working set of the last 1000 ms from background

@@ -89,13 +89,6 @@ if [ -d "$home/modules" ] && [ -f "$home/tools/ksud" ]; then
     fi
 fi
 
-ui_print " "
-ui_print "----------------------------------------------"
-ui_print "OnePlus Kernels by SakFi"
-ui_print "Telegram: https://t.me/SakFi"
-ui_print "GitHub:   https://github.com/sakfi/OP_KSUN_FS"
-ui_print "----------------------------------------------"
-ui_print " "
-ui_print " - Installation complete."
+ui_print " - LKM installation complete."
 ui_print " "
 

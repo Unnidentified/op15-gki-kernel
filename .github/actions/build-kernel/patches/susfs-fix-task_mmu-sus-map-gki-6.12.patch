@@ -1,4 +1,4 @@
-From: oplus-sukisu_kernel maintainers
+From: op15-gki-kernel maintainers
 Subject: [PATCH] fs/proc/task_mmu: re-apply both SUS_MAP checks for 6.12.30+
 
 Derived from the two SUS_MAP hunks in susfs4ksu's

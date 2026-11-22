@@ -1,12 +1,12 @@
-name: 'Build OnePlus Kernel with SukiSU-Ultra'
-description: 'Build OnePlus Kernel with SukiSU-Ultra'
+name: 'Build OnePlus 15 GKI Kernel'
+description: 'Build OnePlus 15 (ColorOS 17) GKI Kernel with SukiSU-Ultra, KernelSU-Next, and SUSFS'
 
 inputs:
   op_config_json:
     description: 'JSON string containing full device config'
     required: true
   ksu_type:
-    description: 'Select root type: SukiSU-Ultra (default) or legacy KernelSU'
+    description: 'Select root type: SUKISU (SukiSU-Ultra), KSUN (KernelSU-Next), or KSU (KernelSU)'
     required: true
   ksu_branch_or_hash:
     description: 'Root branch or commit hash (empty = auto-detect by ksu_type)'
@@ -464,27 +464,6 @@ runs:
         
         DEBUG_ZIP_NAME="debug_${OP_MODEL}_${OP_OS_VERSION}_${KSU_VARIANT_TAG}.zip"
         echo "DEBUG_ZIP_NAME=$DEBUG_ZIP_NAME" >> "$GITHUB_ENV"
-
-    - name: Fetch SakFi AnyKernel3
-      shell: bash
-      run: |
-        set -euo pipefail
-        echo "::group::Fetch SakFi AnyKernel3"
-        echo "Fetching customized AnyKernel3 from https://github.com/sakfi/AnyKernel3.1..."
-        rm -rf "$AK3_FOLDER"
-        for i in 1 2 3; do
-          if git clone --depth 1 -b gki-2.0 https://github.com/sakfi/AnyKernel3.1.git "$AK3_FOLDER"; then
-            echo " SakFi AnyKernel3.1 (gki-2.0) successfully fetched into $AK3_FOLDER"
-            break
-          fi
-          echo " Attempt $i failed, retrying in 3s..."
-          sleep 3
-        done
-        if [ ! -f "$AK3_FOLDER/anykernel.sh" ]; then
-          echo "::error::Failed to fetch SakFi AnyKernel3 after 3 attempts"
-          exit 1
-        fi
-        echo "::endgroup::"
 
     - name: Set Kernel build-tools to Path
       shell: bash
@@ -2641,14 +2620,14 @@ runs:
         echo "Customize Kernel Branding"
         cd "$COMMON_KERNEL_FOLDER"
         mkdir -p out
-        UNAME_BRAND="${OP_UNAME:-SakFi-OP}"
+        UNAME_BRAND="${OP_UNAME:-OP15-COS17}"
         if [ "$UNAME_BRAND" = "OP-WILD" ]; then
-          UNAME_BRAND="SakFi-OP"
+          UNAME_BRAND="OP15-COS17"
         fi
         # OP_UNAME is appended verbatim as LOCALVERSION, giving
         #   uname -r = <kernel version>-<android_version>-<OP_UNAME>
         # It carries two different meanings depending on the profile:
-        #   SakFi-OP                      -> a visible brand marker
+        #   OP15-COS17                    -> a visible brand marker
         #   6-g242e1a07f878-ab15865446-4k -> a stock-style suffix that makes
         #                                    uname -r indistinguishable from a
         #                                    stock OnePlus kernel
@@ -2870,7 +2849,7 @@ runs:
           scripts/config --file "$OUT/.config" -e KSU
         fi
 
-        LOCAL_LOCALVERSION="${CUSTOM_LOCALVERSION:--SakFi-OP}"
+        LOCAL_LOCALVERSION="${CUSTOM_LOCALVERSION:--OP15-COS17}"
         if [ -n "${LOCAL_LOCALVERSION:-}" ]; then
           scripts/config --file "$OUT/.config" --set-str LOCALVERSION "${LOCAL_LOCALVERSION}"
           scripts/config --file "$OUT/.config" -d LOCALVERSION_AUTO || true
@@ -3314,21 +3293,71 @@ runs:
         fi
         
         cp "$IMAGE_PATH" "$AK3_FOLDER/Image"
+        rm -f "$AK3_FOLDER/banner"
 
-        # Verify / Apply SakFi Branding (Banner and Flash Output)
-        if ! grep -q "OnePlus Kernels by SakFi" "$AK3_FOLDER/anykernel.sh"; then
-          BANNER_FILE="${GITHUB_WORKSPACE}/.github/workflows/custom_banner.txt"
-          if [ ! -f "$BANNER_FILE" ]; then
-            BANNER_FILE="${{ github.action_path }}/../../workflows/custom_banner.txt"
-          fi
-          if [ -f "$BANNER_FILE" ] && [ -f "${{ github.action_path }}/inject_banner.py" ]; then
-            echo "Injecting custom SakFi cinematic banner into AnyKernel3..."
-            python3 "${{ github.action_path }}/inject_banner.py" "$BANNER_FILE" "$AK3_FOLDER"
-          fi
+        cat > "$AK3_FOLDER/anykernel.sh" <<EOF
+        ### AnyKernel3 Ramdisk Mod Script
+        ## osm0sis @ xda-developers
+
+        properties() { '
+        kernel.string=OnePlus 15 (ColorOS 17) GKI Kernel (${KSU_VARIANT_NAME:-SukiSU-Ultra} + SUSFS ${SUSVER:-v2.3.0})
+        do.devicecheck=0
+        do.modules=0
+        do.systemless=0
+        do.cleanup=1
+        do.cleanuponabort=0
+        do.check_boot_version=1
+        device.name1=
+        device.name2=
+        device.name3=
+        device.name4=
+        device.name5=
+        supported.versions=
+        supported.patchlevels=
+        supported.vendorpatchlevels=
+        keycheck.timeout=10
+        '; }
+
+        block=boot
+        is_slot_device=auto
+        ramdisk_compression=auto
+        patch_vbmeta_flag=auto
+        no_magisk_check=1
+
+        . tools/ak3-core.sh
+
+        ui_print " "
+        ui_print "OnePlus 15 (ColorOS 17) GKI Kernel"
+        ui_print " - Kernel: ${KERNEL_FULL_VER:-android16-6.12.69}"
+        ui_print " - Root:   ${KSU_VARIANT_NAME:-SukiSU-Ultra} ${KSUVER:-} (${KSUMODE:-builtin})"
+        ui_print " - SUSFS:  ${SUSVER:-disabled}"
+        ui_print " "
+
+        kernel_version=\$(cat /proc/version | awk -F '-' '{print \$1}' | awk '{print \$3}')
+        case \$kernel_version in
+            5.10*|5.15*|6.1*|6.6*|6.12*) ksu_supported=true ;;
+            *) ksu_supported=false ;;
+        esac
+
+        ui_print " - Running kernel: \$kernel_version"
+        \$ksu_supported || abort " ! Unsupported non-GKI kernel version (\$kernel_version); aborting."
+
+        split_boot
+
+        if [ -f "\$SPLITIMG/ramdisk.cpio" ]; then
+            ui_print " - Unpacking ramdisk and writing boot image..."
+            unpack_ramdisk
+            write_boot
         else
-          echo " SakFi AnyKernel3.1 already contains native branding and banner."
+            ui_print " - Flashing boot image..."
+            flash_boot
         fi
-        
+
+        ui_print " - Boot image flashed."
+        ui_print " "
+        EOF
+        sed -i 's/^        //' "$AK3_FOLDER/anykernel.sh"
+
         mv "${ARTIFACTS_FOLDER}/${OP_MODEL}_${OP_OS_VERSION}.txt" "$AK3_FOLDER/"
         cd "$AK3_FOLDER"
         

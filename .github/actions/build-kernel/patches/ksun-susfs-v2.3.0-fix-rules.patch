@@ -1,4 +1,4 @@
-From: oplus-sukisu_kernel maintainers
+From: op15-gki-kernel maintainers
 Subject: [PATCH] KernelSU-Next: adapt rules.c handle_sepolicy for SUSFS v2.3.0
 
 KernelSU-Next dev commit 14d140d9 added ksu_advance_original_types() after

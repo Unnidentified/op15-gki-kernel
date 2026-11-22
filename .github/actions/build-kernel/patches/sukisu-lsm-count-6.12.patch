@@ -1,4 +1,4 @@
-From: oplus-sukisu_kernel maintainers
+From: op15-gki-kernel maintainers
 Subject: [PATCH] lsm_count: reserve a static-call slot for builtin CONFIG_KSU
 
 Linux 6.12 sizes lsm_idlist[] and static_calls_table[] at compile time via
