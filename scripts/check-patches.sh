@@ -158,7 +158,11 @@ if [ "$opt" = "true" ] && [ "$kernel" = "6.12" ]; then
   for p in \
     "$patches_dir/opt-alarmtimer-minimize-wakeup-time-6.12.patch" \
     "$patches_dir/opt-pm-wakeup-avoid-extra-s2idle-6.12.patch" \
-    "$patches_dir/opt-pci-pme-timeout-4000-6.12.patch"; do
+    "$patches_dir/opt-pci-pme-timeout-4000-6.12.patch" \
+    "$patches_dir/opt-dmabuf-bypass-sysfs-stats-6.12.patch" \
+    "$patches_dir/opt-mm-mglru-default-min-ttl-6.12.patch" \
+    "$patches_dir/opt-mm-disable-watermark-boost-6.12.patch" \
+    "$patches_dir/opt-sched-bore-subtick-base-slice-6.12.patch"; do
     add_patch_paths "$p"
   done
 fi
@@ -332,9 +336,16 @@ if [ "$opt" = "true" ]; then
       for p in \
         "$patches_dir/opt-alarmtimer-minimize-wakeup-time-6.12.patch" \
         "$patches_dir/opt-pm-wakeup-avoid-extra-s2idle-6.12.patch" \
-        "$patches_dir/opt-pci-pme-timeout-4000-6.12.patch"; do
+        "$patches_dir/opt-pci-pme-timeout-4000-6.12.patch" \
+        "$patches_dir/opt-dmabuf-bypass-sysfs-stats-6.12.patch" \
+        "$patches_dir/opt-mm-mglru-default-min-ttl-6.12.patch" \
+        "$patches_dir/opt-mm-disable-watermark-boost-6.12.patch"; do
         apply "opt $(basename "$p" .patch)" "$p"
       done
+      if [ "$bore" = "true" ]; then
+        apply "opt opt-sched-bore-subtick-base-slice-6.12" \
+          "$patches_dir/opt-sched-bore-subtick-base-slice-6.12.patch"
+      fi
       ;;
     *) log "opt: no local patches for $kernel, skipped" ;;
   esac

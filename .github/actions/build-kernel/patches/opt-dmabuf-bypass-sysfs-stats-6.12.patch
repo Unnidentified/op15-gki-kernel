@@ -1,0 +1,42 @@
+From: oplus-sukisu_kernel maintainers
+Subject: [PATCH] dma-buf: bypass per-buffer sysfs stats kobject creation
+
+CONFIG_DMABUF_SYSFS_STATS=y is deprecated upstream because creating and
+destroying /sys/kernel/dmabuf/buffers/<ino> kobjects on every DMA-BUF
+allocation and release contends on kernfs_mutex and schedules kworker
+tasks in the hot graphics/camera buffer path.
+
+We cannot set CONFIG_DMABUF_SYSFS_STATS=n on GKI android16-6.12 because
+gki/aarch64/abi.stg requires __tracepoint_android_rvh_dma_buf_stats_teardown.
+Return early from dma_buf_stats_setup() after validating exp_name so
+dmabuf->sysfs_entry stays NULL, eliminating the per-buffer allocation,
+workqueue schedule, and kernfs teardown while keeping the KMI symbol intact.
+---
+diff --git a/drivers/dma-buf/dma-buf-sysfs-stats.c b/drivers/dma-buf/dma-buf-sysfs-stats.c
+index 46689e6..b9ef6f2 100644
+--- a/drivers/dma-buf/dma-buf-sysfs-stats.c
++++ b/drivers/dma-buf/dma-buf-sysfs-stats.c
+@@ -218,23 +218,10 @@ static void sysfs_add_workfn(struct work_struct *work)
+ 
+ int dma_buf_stats_setup(struct dma_buf *dmabuf, struct file *file)
+ {
+-	struct dma_buf_sysfs_entry *sysfs_entry;
+-
+ 	if (!dmabuf->exp_name) {
+ 		pr_err("exporter name must not be empty if stats needed\n");
+ 		return -EINVAL;
+ 	}
+ 
+-	sysfs_entry = kmalloc(sizeof(struct dma_buf_sysfs_entry), GFP_KERNEL);
+-	if (!sysfs_entry)
+-		return -ENOMEM;
+-
+-	sysfs_entry->dmabuf = dmabuf;
+-	dmabuf->sysfs_entry = sysfs_entry;
+-
+-	INIT_WORK(&dmabuf->sysfs_entry->sysfs_add_work, sysfs_add_workfn);
+-	get_dma_buf(dmabuf); /* This reference will be dropped in sysfs_add_workfn. */
+-	schedule_work(&dmabuf->sysfs_entry->sysfs_add_work);
+-
+ 	return 0;
+ }

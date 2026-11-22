@@ -6,10 +6,10 @@ Custom `android16-6.12.69` kernel for the OnePlus 15 (`SM8850`) running ColorOS 
 
 - [SukiSU-Ultra](https://github.com/SukiSU-Ultra/SukiSU-Ultra) (`_SukiSU.zip`) and [KernelSU-Next](https://github.com/KernelSU-Next/KernelSU-Next) (`_KSUN.zip`) compiled in-tree (`builtin`, with `lkm` available via workflow dispatch)
 - [SUSFS](https://gitlab.com/simonpunk/susfs4ksu) (`v2.3.0`, pinned at `c6788e2a21dc717beb7dd3a36b729b58bc909927`)
-- BORE CPU scheduler, ADIOS I/O scheduler, and DAMON memory reclaim
-- Curated suspend/wakeup power patches (`opt`: `alarmtimer` min wakeup timeout, `s2idle` redundant wake suppression, PCI `PME_TIMEOUT=4000`)
+- BORE CPU scheduler (2 ms sub-tick base slice), ADIOS I/O scheduler, MGLRU (1000 ms working-set `min_ttl_ms`), and DAMON memory reclaim
+- Curated power, memory, and compositing patches (`opt`: `dma-buf` sysfs stats kobject bypass, `watermark_boost_factor=0`, `alarmtimer` min wakeup timeout, `s2idle` redundant wake suppression, PCI `PME_TIMEOUT=4000`)
 - NTSync (`CONFIG_NTSYNC=y`) and Droidspaces (`CONFIG_SYSVIPC=y` kABI-safe union, `CONFIG_PID_NS=y`, `CONFIG_USER_NS=y`, `CONFIG_POSIX_MQUEUE=y`, `oplus_bsp_midas` ghost-task guard)
-- Clang `-O2` with AutoFDO (supports custom `kernel.afdo` URL/SHA-256 override) and MLGO (`lto: none`)
+- Clang `-O2 -mcpu=oryon-1 -mno-outline` with AutoFDO (supports custom `kernel.afdo` URL/SHA-256 override) and MLGO (`lto: none`)
 - BBRv3, TTL/HL target, `IP_SET`, IPv6 NAT, and Unicode filename fixes
 - `CONFIG_LIST_HARDENED=y` and 6.12 security backports
 - Baseband Guard kept off (`bbg: false`) for EFISP compatibility

@@ -1,0 +1,32 @@
+From: oplus-sukisu_kernel maintainers
+Subject: [PATCH] sched/bore: allow sub-tick 2 ms base slice on 250 Hz GKI
+
+On GKI android16-6.12 (CONFIG_HZ_250=y, nsecs_per_tick = 4 ms), rounding
+sysctl_sched_base_slice up to a full tick inflates the 2 ms default
+CONFIG_MIN_BASE_SLICE_NS to 4 ms (nearly half of an 8.33 ms 120 Hz frame).
+Use sysctl_sched_min_base_slice (clamped to >= 100 us) directly so BORE
+honours the 2 ms base slice for interactive compositor and UI threads.
+---
+diff --git a/kernel/sched/fair.c b/kernel/sched/fair.c
+index 95aad74..13a92d8 100644
+--- a/kernel/sched/fair.c
++++ b/kernel/sched/fair.c
+@@ -103,7 +103,7 @@ unsigned int sysctl_sched_tunable_scaling = SCHED_TUNABLESCALING_LOG;
+ #ifdef CONFIG_SCHED_BORE
+ static const unsigned int nsecs_per_tick       = 1000000000ULL / HZ;
+ unsigned int sysctl_sched_min_base_slice       = CONFIG_MIN_BASE_SLICE_NS;
+-unsigned int sysctl_sched_base_slice           = nsecs_per_tick;
++unsigned int sysctl_sched_base_slice           = CONFIG_MIN_BASE_SLICE_NS;
+ #else // !CONFIG_SCHED_BORE
+ unsigned int sysctl_sched_base_slice			= 700000ULL;
+ static unsigned int normalized_sysctl_sched_base_slice	= 700000ULL;
+@@ -239,8 +239,7 @@ static inline void update_load_set(struct load_weight *lw, unsigned long w)
+  */
+ #ifdef CONFIG_SCHED_BORE
+ static void update_sysctl(void) {
+-	sysctl_sched_base_slice = nsecs_per_tick *
+-		max(1UL, DIV_ROUND_UP(sysctl_sched_min_base_slice, nsecs_per_tick));
++	sysctl_sched_base_slice = max(sysctl_sched_min_base_slice, 100000U);
+ }
+ void sched_update_min_base_slice(void) { update_sysctl(); }
+ #else // !CONFIG_SCHED_BORE
