@@ -17,16 +17,16 @@ Every toggle listed here is driven from [`configs/a16/OP15-COS17.json`](../confi
 | `autofdo` | `true` | Applies AOSP AutoFDO profile (`CONFIG_AUTOFDO_CLANG=y`), with optional `autofdo_profile_url` / `autofdo_profile_sha256` override |
 | `mlgo` | `true` | Enables Clang ML-guided register allocation (`-mllvm -regalloc-enable-advisor=release`) |
 | `lto` | `none` | Kept at `none` so AutoFDO builds cleanly on `android16-6.12` |
-| `optimize_level` | `O2` (default) | `-O2` with `-mcpu=oryon-1` (supports `-O3` via workflow input) |
+| `optimize_level` | `O2` (default) | `-O2` with `-mcpu=oryon-1 -mno-outline` (supports `-O3` via workflow input) |
 
-## CPU Scheduler, I/O, Memory & Power (`opt`)
+## CPU Scheduler, I/O, Memory, Compositing & Power (`opt`)
 
 | Toggle | Setting | Purpose |
 |---|---|---|
-| `bore` | `true` | Burst-Oriented Response Enhancer (`sched_bore=1`) for interactive foreground latency |
+| `bore` | `true` | Burst-Oriented Response Enhancer (`sched_bore=1`) with sub-tick 2 ms `base_slice_ns` for 120 Hz compositor latency |
 | `adios` | `true` | Adaptive Deadline I/O Scheduler (`[adios]` default) |
 | `damon` | `true` | Kernel Data Access Monitor (`CONFIG_DAMON*`) for proactive memory reclamation |
-| `opt` | `true` | Curated local 6.12.69 power/wakeup patches: `alarmtimer` min wakeup timeout (`ktime_to_ms(min) + 1`), `pm_system_wakeup()` single `s2idle_wake()` transition, and PCI `PME_TIMEOUT=4000` |
+| `opt` | `true` | Curated local 6.12.69 patches: `dma-buf` per-buffer sysfs stats bypass (KMI-safe), BORE 2 ms sub-tick base slice, MGLRU 1000 ms default `min_ttl_ms`, `watermark_boost_factor=0`, `alarmtimer` min wakeup timeout, `pm_system_wakeup()` single `s2idle_wake()` transition, and PCI `PME_TIMEOUT=4000` |
 | `kasan` | `true` | Keeps `CONFIG_KASAN_HW_TAGS=y` so `kasan_flag_enabled` resolves for stock vendor modules while bootloader sets `kasan=off` |
 
 ## Containers, Gaming, Networking, Filesystem & Security

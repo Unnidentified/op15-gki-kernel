@@ -2076,28 +2076,35 @@ runs:
         cd "$COMMON_KERNEL_FOLDER"
 
         # Curated local patches generated cleanly against android16-6.12.69
-        # (242e1a07f8782987c579929a20a74c0b26e88608). Only genuine power and
-        # suspend/wakeup fixes are kept:
+        # (242e1a07f8782987c579929a20a74c0b26e88608). Only genuine power,
+        # latency, memory, and DMA-BUF fixes are kept:
         #   - opt-alarmtimer-minimize-wakeup-time-6.12.patch
         #       ktime_to_ms(min) + 1 instead of a fixed 2s wakeup hold on -EBUSY
         #   - opt-pm-wakeup-avoid-extra-s2idle-6.12.patch
         #       only call s2idle_wake() when pm_abort_suspend transitions 0 -> 1
         #   - opt-pci-pme-timeout-4000-6.12.patch
         #       bump PME_TIMEOUT from 1000 ms to 4000 ms
-        #
-        # Dropped from the upstream WildKernels opt bundle:
-        #   increase_sk_mem_packets      targets SK_WMEM_DEFAULT removed in 6.12.69
-        #   mem_opt_prefetch             2015 prfm hints counterproductive on Oryon
-        #   reduce_cache_pressure        runtime sysctl, not a kernel patch
-        #   reduce_gc_thread_sleep_time  already configured by Android vold
-        #   f2fs_reduce_congestion       unverified F2FS congestion heuristic tweak
-        #   f2fs_enlarge_min_fsync_blocks changes F2FS fsync threshold
-        #   adjust_cpu_scan_order        sched domain scan-order hack
+        #   - opt-dmabuf-bypass-sysfs-stats-6.12.patch
+        #       skip per-buffer /sys/kernel/dmabuf/buffers/<ino> kobject allocation
+        #       and kernfs lock contention while keeping KMI tracepoints exported
+        #   - opt-sched-bore-subtick-base-slice-6.12.patch
+        #       use BORE's 2 ms min_base_slice directly instead of rounding up to
+        #       the 4 ms 250 Hz tick
+        #   - opt-mm-mglru-default-min-ttl-6.12.patch
+        #       default MGLRU lru_gen_min_ttl to 1000 ms (HZ) for working-set protection
+        #   - opt-mm-disable-watermark-boost-6.12.patch
+        #       default watermark_boost_factor to 0 to avoid kswapd reclaim spikes
         OPT_PATCHES=(
           opt-alarmtimer-minimize-wakeup-time-6.12.patch
           opt-pm-wakeup-avoid-extra-s2idle-6.12.patch
           opt-pci-pme-timeout-4000-6.12.patch
+          opt-dmabuf-bypass-sysfs-stats-6.12.patch
+          opt-mm-mglru-default-min-ttl-6.12.patch
+          opt-mm-disable-watermark-boost-6.12.patch
         )
+        if [ "${OP_BORE:-false}" = "true" ]; then
+          OPT_PATCHES+=(opt-sched-bore-subtick-base-slice-6.12.patch)
+        fi
 
         for name in "${OPT_PATCHES[@]}"; do
           p="${GITHUB_ACTION_PATH}/patches/$name"
@@ -2894,7 +2901,7 @@ runs:
         
         case "$OP_BRANCH" in
           wild/sm8750|wild/sm8850|wild/sm8845)
-            KCFLAGS_EXTRA="-mcpu=oryon-1 ${KCFLAGS_EXTRA}"
+            KCFLAGS_EXTRA="-mcpu=oryon-1 -mno-outline ${KCFLAGS_EXTRA}"
             ;;
         esac
         

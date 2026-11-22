@@ -2,7 +2,15 @@
 
 Updates made across the OnePlus 15 ColorOS 17 (`OP15-COS17`) kernel tree and CI workflows.
 
-## Latest Updates (`v2.3.0-r2`)
+## Latest Updates (`v2.3.0-r3`)
+
+- **Compositing, Memory, BORE Sub-Tick & Oryon Compiler Optimisations**:
+  - Added `opt-dmabuf-bypass-sysfs-stats-6.12.patch` to eliminate per-buffer `/sys/kernel/dmabuf/buffers/<ino>` kobject allocations, workqueue schedules, and `kernfs_mutex` contention in the hot graphics/camera buffer path while keeping `__tracepoint_android_rvh_dma_buf_stats_teardown` KMI-exported.
+  - Added `opt-sched-bore-subtick-base-slice-6.12.patch` so BORE honours its 2 ms `CONFIG_MIN_BASE_SLICE_NS` directly instead of rounding up to the 4 ms 250 Hz tick.
+  - Added `opt-mm-mglru-default-min-ttl-6.12.patch` (`lru_gen_min_ttl = HZ` / 1000 ms working-set protection) and `opt-mm-disable-watermark-boost-6.12.patch` (`watermark_boost_factor = 0`).
+  - Added `-mno-outline` alongside `-mcpu=oryon-1` for Snapdragon 8 Elite (`wild/sm8850`) to prevent synthetic outliner call hops in hot kernel paths.
+
+## Previous Release (`v2.3.0-r2`)
 
 - **Dual Root Variant Support (SukiSU-Ultra & KernelSU-Next)**:
   - Refactored `build-kernel-release.yml`, `build-kernel/action.yml`, and `scripts/build-info.py` so both `SukiSU-Ultra` (`SUKISU` -> `_SukiSU.zip`) and `KernelSU-Next` (`KSUN` -> `_KSUN.zip`) build in a single matrix run and publish distinct flashable zips and `*_build-info.json` files to the same release.
