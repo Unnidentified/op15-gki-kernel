@@ -5,7 +5,10 @@ Updates made across the OnePlus 15 ColorOS 17 (`OP15-COS17`) kernel tree and CI 
 ## Unreleased (Test Build)
 
 - **Default `bbr3` + `fq` Network Stack**: Fixed WildKernels' `DEFAULT_BBR3` Kconfig condition typo in `net/ipv4/Kconfig`, set `CONFIG_DEFAULT_BBR3=y` + `CONFIG_DEFAULT_FQ=y` so `bbr3` and `fq` pacing activate at boot instead of `cubic` + `pfifo_fast`, and added resolved `.config` assertions.
-- **Non-ABI Debugfs Trim & Prerelease Flag**: Disabled `CONFIG_PM_ADVANCED_DEBUG` and `CONFIG_KUNIT_DEBUGFS` under `opt: true` (preserving all `gki/aarch64/abi.stg` symbols), and added a `prerelease` boolean dispatch input to `build-kernel-release.yml`.
+- **Boot `sched_schedstats` Suppression**: Added `opt-sched-disable-boot-schedstats-6.12.patch` so PID 1 `init` (`/system/etc/init/atrace.rc`) leaves the `sched_schedstats` static key disabled (`0`) at boot instead of running scheduler stats accounting across all cores, while keeping `CONFIG_SCHEDSTATS=y` for KMI parity and allowing explicit non-init writes.
+- **Non-ABI Debugfs & Rust Overflow Trim**: Disabled `CONFIG_PM_ADVANCED_DEBUG`, `CONFIG_KUNIT_DEBUGFS`, `CONFIG_PTDUMP_STAGE2_DEBUGFS`, and `CONFIG_RUST_OVERFLOW_CHECKS` (`-Coverflow-checks=n` in `rust_binder`) under `opt: true`, verified with `gki/aarch64/abi.stg` and asserted in the resolved `.config` audit.
+- **Prerelease & ETM Capture Workflow Inputs**: Added `prerelease` (marks GitHub releases as pre-release) and `enable_etm` (unblacklists `coresight_uetm` for CoreSight ETM AutoFDO tracing alongside `debug: true`) to `build-kernel-release.yml`.
+- **Live SM8850 Hardware Audit Confirmed**: Kept `qcom-cpu-lpm` CPUIdle (`5.10s` vs `2.13s` under `teo` in `large-cluster1-` deep sleep over 5 s), `# CONFIG_BLK_WBT_MQ is not set` alongside `ADIOS` (`226 MB/s` sequential, `136 MB/s` 4K sync write), and ColorOS `oplus_bsp_zram_opt` `hybridswap`.
 
 ## Latest Updates (`v2.3.0-r3`)
 

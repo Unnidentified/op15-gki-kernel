@@ -26,7 +26,7 @@ Every toggle listed here is driven from [`configs/a16/OP15-COS17.json`](../confi
 | `bore` | `true` | Burst-Oriented Response Enhancer (`sched_bore=1`) with sub-tick 2 ms `base_slice_ns` for 120 Hz compositor latency |
 | `adios` | `true` | Adaptive Deadline I/O Scheduler (`[adios]` default) |
 | `damon` | `true` | Kernel Data Access Monitor (`CONFIG_DAMON*`) for proactive memory reclamation |
-| `opt` | `true` | Curated local 6.12.69 patches: `dma-buf` per-buffer sysfs stats bypass (KMI-safe), BORE 2 ms sub-tick base slice, MGLRU 1000 ms default `min_ttl_ms`, `watermark_boost_factor=0`, `alarmtimer` min wakeup timeout, `pm_system_wakeup()` single `s2idle_wake()` transition, PCI `PME_TIMEOUT=4000`, and non-ABI debugfs trim (`PM_ADVANCED_DEBUG=n`, `KUNIT_DEBUGFS=n`) |
+| `opt` | `true` | Curated local 6.12.69 patches: `dma-buf` per-buffer sysfs stats bypass (KMI-safe), BORE 2 ms sub-tick base slice, MGLRU 1000 ms default `min_ttl_ms`, `watermark_boost_factor=0`, `alarmtimer` min wakeup timeout, `pm_system_wakeup()` single `s2idle_wake()` transition, PCI `PME_TIMEOUT=4000`, `sched_schedstats` boot-time `init` write suppression (`atrace.rc`), and non-ABI runtime/debugfs trim (`PM_ADVANCED_DEBUG=n`, `KUNIT_DEBUGFS=n`, `PTDUMP_STAGE2_DEBUGFS=n`, `RUST_OVERFLOW_CHECKS=n`) |
 | `kasan` | `true` | Keeps `CONFIG_KASAN_HW_TAGS=y` so `kasan_flag_enabled` resolves for stock vendor modules while bootloader sets `kasan=off` |
 
 ## Containers, Gaming, Networking, Filesystem & Security

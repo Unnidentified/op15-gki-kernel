@@ -59,6 +59,10 @@ on:
         required: false
         type: string
         default: ''
+      enable_etm:
+        description: 'Allow coresight_uetm to load for CoreSight ETM AutoFDO capture (default: false)'
+        type: boolean
+        default: false
       optimize_level:
         description: "Compiler optimization level"
         required: true
@@ -770,6 +774,7 @@ jobs:
           release_tag: ${{ needs.set-op-model.outputs.release_tag }}
           autofdo_profile_url: ${{ inputs.autofdo_profile_url }}
           autofdo_profile_sha256: ${{ inputs.autofdo_profile_sha256 }}
+          enable_etm: ${{ inputs.enable_etm }}
 
   trigger-release:
     needs: [set-op-model, build-A16]

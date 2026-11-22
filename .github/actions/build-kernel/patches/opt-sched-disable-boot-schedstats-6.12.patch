@@ -1,0 +1,27 @@
+From: op15-gki-kernel maintainers
+Subject: [PATCH] sched: keep sched_schedstats off after init atrace.rc write
+
+Android's /system/etc/init/atrace.rc writes 1 to
+/proc/sys/kernel/sched_schedstats during late-init, enabling
+sched_info accounting across all CPUs for the entire boot. Keep the
+sched_schedstats static key disabled when PID 1 init performs that
+boot-time write while leaving explicit non-init writes working and
+CONFIG_SCHEDSTATS enabled for GKI KMI parity.
+---
+diff --git a/kernel/sched/core.c b/kernel/sched/core.c
+--- a/kernel/sched/core.c	2026-11-23 00:13:34
++++ b/kernel/sched/core.c	2026-11-23 00:13:34
+@@ -5237,8 +5237,12 @@
+ 	err = proc_dointvec_minmax(&t, write, buffer, lenp, ppos);
+ 	if (err < 0)
+ 		return err;
+-	if (write)
++	if (write) {
++		/* Ignore PID 1 init's boot-time atrace.rc write; keep static key off unless enabled later. */
++		if (state && task_pid_nr(current) == 1)
++			return err;
+ 		set_schedstats(state);
++	}
+ 	return err;
+ }
+ #endif /* CONFIG_PROC_SYSCTL */
