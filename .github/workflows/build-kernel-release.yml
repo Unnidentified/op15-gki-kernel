@@ -97,6 +97,10 @@ on:
         description: 'Publish GitHub Release immediately (uncheck to save as Draft)'
         type: boolean
         default: true
+      prerelease:
+        description: 'Mark GitHub Release as a Pre-release (for test builds)'
+        type: boolean
+        default: false
       build_timestamp:
         description: 'Custom kernel build timestamp for uname -a (e.g. "Tue Feb 10 10:01:02 UTC 2026"). Leave empty for current time.'
         type: string
@@ -821,6 +825,7 @@ jobs:
           rm -f ./downloaded-artifacts/ccache-binary.zip \
                 ./downloaded-artifacts/*_kmi_report.zip \
                 ./downloaded-artifacts/*_patch_rejects.zip \
+                ./downloaded-artifacts/*_Debug.zip \
                 ./downloaded-artifacts/debug_*.zip
           echo "=== Downloaded artifacts ==="
           if [ -d "./downloaded-artifacts" ]; then
@@ -1066,11 +1071,15 @@ jobs:
       - name: Create GitHub Release
         env:
           PUBLISH_RELEASE: ${{ inputs.publish_release }}
+          PRERELEASE: ${{ inputs.prerelease }}
         run: |
           set -euo pipefail
           extra_flags=()
           if [ "${PUBLISH_RELEASE}" != "true" ]; then
             extra_flags+=(--draft)
+          fi
+          if [ "${PRERELEASE}" = "true" ]; then
+            extra_flags+=(--prerelease)
           fi
           gh release create "$NEW_TAG" \
             --repo "${{ env.REPO_OWNER }}/${{ env.REPO_NAME }}" \

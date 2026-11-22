@@ -2,6 +2,11 @@
 
 Updates made across the OnePlus 15 ColorOS 17 (`OP15-COS17`) kernel tree and CI workflows.
 
+## Unreleased (Test Build)
+
+- **Default `bbr3` + `fq` Network Stack**: Fixed WildKernels' `DEFAULT_BBR3` Kconfig condition typo in `net/ipv4/Kconfig`, set `CONFIG_DEFAULT_BBR3=y` + `CONFIG_DEFAULT_FQ=y` so `bbr3` and `fq` pacing activate at boot instead of `cubic` + `pfifo_fast`, and added resolved `.config` assertions.
+- **Non-ABI Debugfs Trim & Prerelease Flag**: Disabled `CONFIG_PM_ADVANCED_DEBUG` and `CONFIG_KUNIT_DEBUGFS` under `opt: true` (preserving all `gki/aarch64/abi.stg` symbols), and added a `prerelease` boolean dispatch input to `build-kernel-release.yml`.
+
 ## Latest Updates (`v2.3.0-r3`)
 
 - **Compositing, Memory, BORE Sub-Tick & Oryon Compiler Optimisations**:

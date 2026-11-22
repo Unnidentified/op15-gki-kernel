@@ -26,7 +26,7 @@ Every toggle listed here is driven from [`configs/a16/OP15-COS17.json`](../confi
 | `bore` | `true` | Burst-Oriented Response Enhancer (`sched_bore=1`) with sub-tick 2 ms `base_slice_ns` for 120 Hz compositor latency |
 | `adios` | `true` | Adaptive Deadline I/O Scheduler (`[adios]` default) |
 | `damon` | `true` | Kernel Data Access Monitor (`CONFIG_DAMON*`) for proactive memory reclamation |
-| `opt` | `true` | Curated local 6.12.69 patches: `dma-buf` per-buffer sysfs stats bypass (KMI-safe), BORE 2 ms sub-tick base slice, MGLRU 1000 ms default `min_ttl_ms`, `watermark_boost_factor=0`, `alarmtimer` min wakeup timeout, `pm_system_wakeup()` single `s2idle_wake()` transition, and PCI `PME_TIMEOUT=4000` |
+| `opt` | `true` | Curated local 6.12.69 patches: `dma-buf` per-buffer sysfs stats bypass (KMI-safe), BORE 2 ms sub-tick base slice, MGLRU 1000 ms default `min_ttl_ms`, `watermark_boost_factor=0`, `alarmtimer` min wakeup timeout, `pm_system_wakeup()` single `s2idle_wake()` transition, PCI `PME_TIMEOUT=4000`, and non-ABI debugfs trim (`PM_ADVANCED_DEBUG=n`, `KUNIT_DEBUGFS=n`) |
 | `kasan` | `true` | Keeps `CONFIG_KASAN_HW_TAGS=y` so `kasan_flag_enabled` resolves for stock vendor modules while bootloader sets `kasan=off` |
 
 ## Containers, Gaming, Networking, Filesystem & Security
@@ -35,7 +35,7 @@ Every toggle listed here is driven from [`configs/a16/OP15-COS17.json`](../confi
 |---|---|---|
 | `ntsync` | `true` | Windows NT synchronization primitive driver (`CONFIG_NTSYNC=y`, `/dev/ntsync`) for Wine/Proton |
 | `ds` | `true` | Droidspaces container support (`CONFIG_SYSVIPC=y` kABI-safe union in `task_struct`, `CONFIG_PID_NS=y`, `CONFIG_USER_NS=y`, `CONFIG_POSIX_MQUEUE=y`, and `oplus_bsp_midas` ghost-task guard) |
-| `bbr` / `bbr3` | `true` / `true` | Enables TCP BBR + BBRv3 congestion control (`CONFIG_TCP_CONG_BBR3`) |
+| `bbr` / `bbr3` | `true` / `true` | Enables TCP BBR + BBRv3 (`CONFIG_TCP_CONG_BBR3=y`) and sets boot defaults to `bbr3` (`CONFIG_DEFAULT_BBR3=y`) + `fq` pacing (`CONFIG_DEFAULT_FQ=y`) |
 | `ttl` | `true` | Netfilter `TTL` / `HL` mangling targets |
 | `ip_set` | `true` | `IP_SET` + IPv6 NAT netfilter support |
 | `unicode` | `true` | Upstream case-insensitive / Unicode path handling fixes |
