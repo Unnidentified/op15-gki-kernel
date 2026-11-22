@@ -29,7 +29,9 @@ Back up stock `boot` and `init_boot` before flashing. If you are moving from an 
 
 1. Check the zip against the published SHA-256 (`sha256sum <file>.zip`).
 2. Flash either the `_SukiSU.zip` or `_KSUN.zip` build with Kernel Flasher or Horizon Kernel Flasher.
-3. Install the matching manager APK: [SukiSU-Ultra Manager](https://github.com/SukiSU-Ultra/SukiSU-Ultra/releases) or [KernelSU-Next Manager](https://github.com/KernelSU-Next/KernelSU-Next/releases).
+3. Install the matching manager APK:
+   - SukiSU-Ultra (`_SukiSU.zip`): [`SukiSU_Nova_v3.0.0_35000-arm64-v8a-release.apk`](https://github.com/SukiSU-Nova/SukiSU-Nova/releases/download/v3.0.0/SukiSU_Nova_v3.0.0_35000-arm64-v8a-release.apk) ([all releases](https://github.com/SukiSU-Nova/SukiSU-Nova/releases))
+   - KernelSU-Next (`_KSUN.zip`): `dev` UAPI v6 builds (such as `33646-6` in `v2.3.0-r3`) need the matching UAPI v6 manager APK from [KernelSU-Next Build Manager CI](https://github.com/KernelSU-Next/KernelSU-Next/actions/workflows/build-manager-ci.yml) (for `v2.3.0-r3`: [`manager` artifact in run `45046724918`](https://github.com/KernelSU-Next/KernelSU-Next/actions/runs/45046724918/artifacts/14763468590)). UAPI v5 builds use [`KernelSU_Next_v3.4.2_33355-release.apk`](https://github.com/KernelSU-Next/KernelSU-Next/releases/download/v3.4.2/KernelSU_Next_v3.4.2_33355-release.apk).
 
 ## Repository
 
