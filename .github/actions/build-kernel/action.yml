@@ -59,6 +59,10 @@ inputs:
     description: 'Optional SHA-256 checksum for a custom autofdo_profile_url override.'
     required: false
     default: ''
+  enable_etm:
+    description: 'Allow coresight_uetm to load for hardware CoreSight ETM capture (default: false)'
+    required: false
+    default: false
 
 outputs:
   kernel_version:
@@ -2080,6 +2084,7 @@ runs:
           opt-dmabuf-bypass-sysfs-stats-6.12.patch
           opt-mm-mglru-default-min-ttl-6.12.patch
           opt-mm-disable-watermark-boost-6.12.patch
+          opt-sched-disable-boot-schedstats-6.12.patch
         )
         if [ "${OP_BORE:-false}" = "true" ]; then
           OPT_PATCHES+=(opt-sched-bore-subtick-base-slice-6.12.patch)
@@ -2097,8 +2102,10 @@ runs:
         cat >> "$COMMON_KERNEL_FOLDER/arch/arm64/configs/gki_defconfig" <<EOF
         # CONFIG_PM_ADVANCED_DEBUG is not set
         # CONFIG_KUNIT_DEBUGFS is not set
+        # CONFIG_PTDUMP_STAGE2_DEBUGFS is not set
+        # CONFIG_RUST_OVERFLOW_CHECKS is not set
         EOF
-        echo "   ${#OPT_PATCHES[@]} curated local opt patches applied (+ non-ABI debugfs trim)"
+        echo "   ${#OPT_PATCHES[@]} curated local opt patches applied (+ non-ABI debugfs/rust-overflow trim)"
         echo "::endgroup::"
 
     - name: Apply NTSync Patch
@@ -2671,6 +2678,8 @@ runs:
     
     - name: Disable Vendor / Kernel Modules
       shell: bash
+      env:
+        ENABLE_ETM: ${{ inputs.enable_etm }}
       run: |
         set -euo pipefail
         echo "Disabling Vendor / Kernel Modules"
@@ -2685,6 +2694,8 @@ runs:
           if [ -n "$mod" ]; then
             if [ "${KSUMODE:-lkm}" = "lkm" ] && [ "$mod" = "kernelsu" ]; then
               echo " Allowing 'kernelsu' module to load (LKM mode active)"
+            elif [ "${ENABLE_ETM:-false}" = "true" ] && [ "$mod" = "coresight_uetm" ]; then
+              echo " Allowing 'coresight_uetm' module to load (enable_etm=true)"
             else
               modules+=("$mod")
             fi
@@ -2982,6 +2993,16 @@ runs:
         audit "${OP_BBR3:-false}"    TCP_CONG_BBR3      "BBRv3 congestion control"
         audit "${OP_BBR3:-false}"    DEFAULT_BBR3       "Default TCP = bbr3"
         audit "${OP_BBR3:-false}"    DEFAULT_FQ         "Default qdisc = fq"
+        if [ "${OP_OPT:-false}" = "true" ] && [ "$KERNEL_VER" = "6.12" ]; then
+          for sym in PM_ADVANCED_DEBUG KUNIT_DEBUGFS PTDUMP_STAGE2_DEBUGFS RUST_OVERFLOW_CHECKS; do
+            if grep -q "^CONFIG_${sym}=y" "$OUT/.config"; then
+              echo "::error::CONFIG_${sym}=y in resolved config, but opt trim disables it"
+              audit_failed=1
+            else
+              echo "   OK      opt trim: CONFIG_${sym} is off"
+            fi
+          done
+        fi
 
         # Baseline hardening is unconditional on 6.6+, so there is no config
         # flag to key off - check it directly.

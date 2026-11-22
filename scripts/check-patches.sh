@@ -162,6 +162,7 @@ if [ "$opt" = "true" ] && [ "$kernel" = "6.12" ]; then
     "$patches_dir/opt-dmabuf-bypass-sysfs-stats-6.12.patch" \
     "$patches_dir/opt-mm-mglru-default-min-ttl-6.12.patch" \
     "$patches_dir/opt-mm-disable-watermark-boost-6.12.patch" \
+    "$patches_dir/opt-sched-disable-boot-schedstats-6.12.patch" \
     "$patches_dir/opt-sched-bore-subtick-base-slice-6.12.patch"; do
     add_patch_paths "$p"
   done
@@ -339,7 +340,8 @@ if [ "$opt" = "true" ]; then
         "$patches_dir/opt-pci-pme-timeout-4000-6.12.patch" \
         "$patches_dir/opt-dmabuf-bypass-sysfs-stats-6.12.patch" \
         "$patches_dir/opt-mm-mglru-default-min-ttl-6.12.patch" \
-        "$patches_dir/opt-mm-disable-watermark-boost-6.12.patch"; do
+        "$patches_dir/opt-mm-disable-watermark-boost-6.12.patch" \
+        "$patches_dir/opt-sched-disable-boot-schedstats-6.12.patch"; do
         apply "opt $(basename "$p" .patch)" "$p"
       done
       if [ "$bore" = "true" ]; then
